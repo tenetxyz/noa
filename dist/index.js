@@ -8611,6 +8611,21 @@ class Observer {
          * Gets or sets a property defining that the observer as to be unregistered after the next notification
          */
         this.unregisterOnNextCall = false;
+        /**
+         * this function can be used to remove the observer from the observable.
+         * It will be set by the observable that the observer belongs to.
+         * @internal
+         */
+        this._remove = null;
+    }
+    /**
+     * Remove the observer from its observable
+     * This can be used instead of using the observable's remove function.
+     */
+    remove() {
+        if (this._remove) {
+            this._remove();
+        }
     }
 }
 /**
@@ -8701,6 +8716,10 @@ class Observable {
                 this.notifyObserver(observer, this._lastNotifiedValue);
             }
         }
+        // attach the remove function to the observer
+        observer._remove = () => {
+            this.remove(observer);
+        };
         return observer;
     }
     /**
@@ -8720,6 +8739,7 @@ class Observable {
         if (!observer) {
             return false;
         }
+        observer._remove = null;
         const index = this._observers.indexOf(observer);
         if (index !== -1) {
             this._deferUnregister(observer);
@@ -8873,7 +8893,12 @@ class Observable {
      * Clear the list of observers
      */
     clear() {
-        this._observers.length = 0;
+        while (this._observers.length) {
+            const o = this._observers.pop();
+            if (o) {
+                o._remove = null;
+            }
+        }
         this._onObserverAdded = null;
         this._numObserversMarkedAsDeleted = 0;
         this.cleanLastNotifiedState();
@@ -9117,11 +9142,14 @@ const CloneValue = (source, destinationObject) => {
     if (source.getClassName && source.getClassName() === "Mesh") {
         return null;
     }
-    if (source.getClassName && source.getClassName() === "SubMesh") {
+    if (source.getClassName && (source.getClassName() === "SubMesh" || source.getClassName() === "PhysicsBody")) {
         return source.clone(destinationObject);
     }
     else if (source.clone) {
         return source.clone();
+    }
+    else if (Array.isArray(source)) {
+        return source.slice();
     }
     return null;
 };
@@ -9166,7 +9194,10 @@ class DeepCopier {
             }
             try {
                 if (typeOfSourceValue === "object") {
-                    if (sourceValue instanceof Array) {
+                    if (sourceValue instanceof Uint8Array) {
+                        destination[prop] = Uint8Array.from(sourceValue);
+                    }
+                    else if (sourceValue instanceof Array) {
                         destination[prop] = [];
                         if (sourceValue.length > 0) {
                             if (typeof sourceValue[0] == "object") {
@@ -9589,7 +9620,7 @@ class ShaderCodeNode {
         return true;
     }
     process(preprocessors, options) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         let result = "";
         if (this.line) {
             let value = this.line;
@@ -9608,7 +9639,8 @@ class ShaderCodeNode {
                 if (!options.isFragment && processor.attributeProcessor && this.line.startsWith(attributeKeyword)) {
                     value = processor.attributeProcessor(this.line, preprocessors, options.processingContext);
                 }
-                else if (processor.varyingProcessor && this.line.startsWith(varyingKeyword)) {
+                else if (processor.varyingProcessor &&
+                    (((_g = processor.varyingCheck) === null || _g === void 0 ? void 0 : _g.call(processor, this.line, options.isFragment)) || (!processor.varyingCheck && this.line.startsWith(varyingKeyword)))) {
                     value = processor.varyingProcessor(this.line, options.isFragment, preprocessors, options.processingContext);
                 }
                 else if (processor.uniformProcessor && processor.uniformRegexp && processor.uniformRegexp.test(this.line)) {
@@ -9738,7 +9770,36 @@ class ShaderDefineExpression {
         }
         return stack[stack.length - 1];
     }
+    /**
+     * Converts an infix expression to a postfix expression.
+     *
+     * This method is used to transform infix expressions, which are more human-readable,
+     * into postfix expressions, also known as Reverse Polish Notation (RPN), that can be
+     * evaluated more efficiently by a computer. The conversion is based on the operator
+     * priority defined in _OperatorPriority.
+     *
+     * The function employs a stack-based algorithm for the conversion and caches the result
+     * to improve performance. The cache keeps track of each converted expression's access time
+     * to manage the cache size and optimize memory usage. When the cache size exceeds a specified
+     * limit, the least recently accessed items in the cache are deleted.
+     *
+     * The cache mechanism is particularly helpful for shader compilation, where the same infix
+     * expressions might be encountered repeatedly, hence the caching can speed up the process.
+     *
+     * @param infix - The infix expression to be converted.
+     * @returns The postfix expression as an array of strings.
+     */
     static infixToPostfix(infix) {
+        // Is infix already in cache
+        const cacheItem = ShaderDefineExpression._InfixToPostfixCache.get(infix);
+        if (cacheItem) {
+            cacheItem.accessTime = Date.now();
+            return cacheItem.result;
+        }
+        // Is infix contain any operator
+        if (!infix.includes("&&") && !infix.includes("||") && !infix.includes(")") && !infix.includes("(")) {
+            return [infix];
+        }
         const result = [];
         let stackIdx = -1;
         const pushOperand = () => {
@@ -9791,9 +9852,37 @@ class ShaderDefineExpression {
                 result.push(pop());
             }
         }
+        // If the cache is at capacity, clear it before adding a new item
+        if (ShaderDefineExpression._InfixToPostfixCache.size >= ShaderDefineExpression.InfixToPostfixCacheLimitSize) {
+            ShaderDefineExpression.ClearCache();
+        }
+        // Add the new item to the cache, including the current time as the last access time
+        ShaderDefineExpression._InfixToPostfixCache.set(infix, { result, accessTime: Date.now() });
         return result;
     }
+    static ClearCache() {
+        // Convert the cache to an array and sort by last access time
+        const sortedCache = Array.from(ShaderDefineExpression._InfixToPostfixCache.entries()).sort((a, b) => a[1].accessTime - b[1].accessTime);
+        // Remove the least recently accessed half of the cache
+        for (let i = 0; i < ShaderDefineExpression.InfixToPostfixCacheCleanupSize; i++) {
+            ShaderDefineExpression._InfixToPostfixCache.delete(sortedCache[i][0]);
+        }
+    }
 }
+/**
+ * Cache items count limit for the InfixToPostfix cache.
+ * It uses to improve the performance of the shader compilation.
+ * For details see PR: https://github.com/BabylonJS/Babylon.js/pull/13936
+ */
+ShaderDefineExpression.InfixToPostfixCacheLimitSize = 50000;
+/**
+ * When the cache size is exceeded, a cache cleanup will be triggered
+ * and the cache will be reduced by the size specified
+ * in the InfixToPostfixCacheCleanupSize variable, removing entries
+ * that have not been accessed the longest.
+ */
+ShaderDefineExpression.InfixToPostfixCacheCleanupSize = 25000;
+ShaderDefineExpression._InfixToPostfixCache = new Map();
 ShaderDefineExpression._OperatorPriority = {
     ")": 0,
     "(": 1,
@@ -9864,6 +9953,9 @@ class ShaderDefineArithmeticOperator extends ShaderDefineExpression {
             case "==":
                 condition = left === right;
                 break;
+            case "!=":
+                condition = left !== right;
+                break;
         }
         return condition;
     }
@@ -9884,6 +9976,10 @@ var ShaderLanguage;
 const regexSE = /defined\s*?\((.+?)\)/g;
 const regexSERevert = /defined\s*?\[(.+?)\]/g;
 const regexShaderInclude = /#include\s?<(.+)>(\((.*)\))*(\[(.*)\])*/g;
+const regexShaderDecl = /__decl__/;
+const regexLightX = /light\{X\}.(\w*)/g;
+const regexX = /\{X\}/g;
+const reusableMatches = [];
 /** @internal */
 class ShaderProcessor {
     static Initialize(options) {
@@ -9951,7 +10047,7 @@ class ShaderProcessor {
         if (match && match.length) {
             return new ShaderDefineIsDefinedOperator(match[1].trim(), expression[0] === "!");
         }
-        const operators = ["==", ">=", "<=", "<", ">"];
+        const operators = ["==", "!=", ">=", "<=", "<", ">"];
         let operator = "";
         let indexOperator = 0;
         for (operator of operators) {
@@ -10035,53 +10131,53 @@ class ShaderProcessor {
         while (cursor.canRead) {
             cursor.lineIndex++;
             const line = cursor.currentLine;
-            const keywords = /(#ifdef)|(#else)|(#elif)|(#endif)|(#ifndef)|(#if)/;
-            const matches = keywords.exec(line);
-            if (matches && matches.length) {
-                const keyword = matches[0];
-                switch (keyword) {
-                    case "#ifdef": {
-                        const newRootNode = new ShaderCodeConditionNode();
-                        rootNode.children.push(newRootNode);
-                        const ifNode = this._BuildExpression(line, 6);
-                        newRootNode.children.push(ifNode);
-                        this._MoveCursorWithinIf(cursor, newRootNode, ifNode);
-                        break;
+            if (line.indexOf("#") >= 0) {
+                const matches = ShaderProcessor._MoveCursorRegex.exec(line);
+                if (matches && matches.length) {
+                    const keyword = matches[0];
+                    switch (keyword) {
+                        case "#ifdef": {
+                            const newRootNode = new ShaderCodeConditionNode();
+                            rootNode.children.push(newRootNode);
+                            const ifNode = this._BuildExpression(line, 6);
+                            newRootNode.children.push(ifNode);
+                            this._MoveCursorWithinIf(cursor, newRootNode, ifNode);
+                            break;
+                        }
+                        case "#else":
+                        case "#elif":
+                            return true;
+                        case "#endif":
+                            return false;
+                        case "#ifndef": {
+                            const newRootNode = new ShaderCodeConditionNode();
+                            rootNode.children.push(newRootNode);
+                            const ifNode = this._BuildExpression(line, 7);
+                            newRootNode.children.push(ifNode);
+                            this._MoveCursorWithinIf(cursor, newRootNode, ifNode);
+                            break;
+                        }
+                        case "#if": {
+                            const newRootNode = new ShaderCodeConditionNode();
+                            const ifNode = this._BuildExpression(line, 3);
+                            rootNode.children.push(newRootNode);
+                            newRootNode.children.push(ifNode);
+                            this._MoveCursorWithinIf(cursor, newRootNode, ifNode);
+                            break;
+                        }
                     }
-                    case "#else":
-                    case "#elif":
-                        return true;
-                    case "#endif":
-                        return false;
-                    case "#ifndef": {
-                        const newRootNode = new ShaderCodeConditionNode();
-                        rootNode.children.push(newRootNode);
-                        const ifNode = this._BuildExpression(line, 7);
-                        newRootNode.children.push(ifNode);
-                        this._MoveCursorWithinIf(cursor, newRootNode, ifNode);
-                        break;
-                    }
-                    case "#if": {
-                        const newRootNode = new ShaderCodeConditionNode();
-                        const ifNode = this._BuildExpression(line, 3);
-                        rootNode.children.push(newRootNode);
-                        newRootNode.children.push(ifNode);
-                        this._MoveCursorWithinIf(cursor, newRootNode, ifNode);
-                        break;
-                    }
+                    continue;
                 }
             }
-            else {
-                const newNode = new ShaderCodeNode();
-                newNode.line = line;
-                rootNode.children.push(newNode);
-                // Detect additional defines
-                if (line[0] === "#" && line[1] === "d") {
-                    const split = line.replace(";", "").split(" ");
-                    newNode.additionalDefineKey = split[1];
-                    if (split.length === 3) {
-                        newNode.additionalDefineValue = split[2];
-                    }
+            const newNode = new ShaderCodeNode();
+            newNode.line = line;
+            rootNode.children.push(newNode);
+            // Detect additional defines
+            if (line[0] === "#" && line[1] === "d") {
+                const split = line.replace(";", "").split(" ");
+                newNode.additionalDefineKey = split[1];
+                if (split.length === 3) {
+                    newNode.additionalDefineValue = split[2];
                 }
             }
         }
@@ -10164,17 +10260,22 @@ class ShaderProcessor {
         return preparedSourceCode;
     }
     static _ProcessIncludes(sourceCode, options, callback) {
-        let match = regexShaderInclude.exec(sourceCode);
-        let returnValue = new String(sourceCode);
+        reusableMatches.length = 0;
+        let match;
+        // stay back-compat to the old matchAll syntax
+        while ((match = regexShaderInclude.exec(sourceCode)) !== null) {
+            reusableMatches.push(match);
+        }
+        let returnValue = String(sourceCode);
+        let parts = [sourceCode];
         let keepProcessing = false;
-        while (match != null) {
+        for (const match of reusableMatches) {
             let includeFile = match[1];
             // Uniform declaration
             if (includeFile.indexOf("__decl__") !== -1) {
-                includeFile = includeFile.replace(/__decl__/, "");
+                includeFile = includeFile.replace(regexShaderDecl, "");
                 if (options.supportsUniformBuffers) {
-                    includeFile = includeFile.replace(/Vertex/, "Ubo");
-                    includeFile = includeFile.replace(/Fragment/, "Ubo");
+                    includeFile = includeFile.replace("Vertex", "Ubo").replace("Fragment", "Ubo");
                 }
                 includeFile = includeFile + "Declaration";
             }
@@ -10203,37 +10304,48 @@ class ShaderProcessor {
                         for (let i = minIndex; i < maxIndex; i++) {
                             if (!options.supportsUniformBuffers) {
                                 // Ubo replacement
-                                sourceIncludeContent = sourceIncludeContent.replace(/light\{X\}.(\w*)/g, (str, p1) => {
+                                sourceIncludeContent = sourceIncludeContent.replace(regexLightX, (str, p1) => {
                                     return p1 + "{X}";
                                 });
                             }
-                            includeContent += sourceIncludeContent.replace(/\{X\}/g, i.toString()) + "\n";
+                            includeContent += sourceIncludeContent.replace(regexX, i.toString()) + "\n";
                         }
                     }
                     else {
                         if (!options.supportsUniformBuffers) {
                             // Ubo replacement
-                            includeContent = includeContent.replace(/light\{X\}.(\w*)/g, (str, p1) => {
+                            includeContent = includeContent.replace(regexLightX, (str, p1) => {
                                 return p1 + "{X}";
                             });
                         }
-                        includeContent = includeContent.replace(/\{X\}/g, indexString);
+                        includeContent = includeContent.replace(regexX, indexString);
                     }
                 }
                 // Replace
-                returnValue = returnValue.replace(match[0], includeContent);
+                // Split all parts on match[0] and intersperse the parts with the include content
+                const newParts = [];
+                for (const part of parts) {
+                    const splitPart = part.split(match[0]);
+                    for (let i = 0; i < splitPart.length - 1; i++) {
+                        newParts.push(splitPart[i]);
+                        newParts.push(includeContent);
+                    }
+                    newParts.push(splitPart[splitPart.length - 1]);
+                }
+                parts = newParts;
                 keepProcessing = keepProcessing || includeContent.indexOf("#include<") >= 0 || includeContent.indexOf("#include <") >= 0;
             }
             else {
                 const includeShaderUrl = options.shadersRepository + "ShadersInclude/" + includeFile + ".fx";
                 ShaderProcessor._FileToolsLoadFile(includeShaderUrl, (fileContent) => {
                     options.includesShadersStore[includeFile] = fileContent;
-                    this._ProcessIncludes(returnValue, options, callback);
+                    this._ProcessIncludes(parts.join(""), options, callback);
                 });
                 return;
             }
-            match = regexShaderInclude.exec(sourceCode);
         }
+        reusableMatches.length = 0;
+        returnValue = parts.join("");
         if (keepProcessing) {
             this._ProcessIncludes(returnValue.toString(), options, callback);
         }
@@ -10256,6 +10368,7 @@ class ShaderProcessor {
         throw _WarnImport("FileTools");
     }
 }
+ShaderProcessor._MoveCursorRegex = /(#ifdef)|(#else)|(#elif)|(#endif)|(#ifndef)|(#if)/;
 
 /**
  * Defines the shader related stores and directory
@@ -12503,6 +12616,7 @@ class WebGLShaderProcessor {
     }
 }
 
+const varyingRegex = /(flat\s)?\s*varying\s*.*/;
 /** @internal */
 class WebGL2ShaderProcessor {
     constructor() {
@@ -12510,6 +12624,9 @@ class WebGL2ShaderProcessor {
     }
     attributeProcessor(attribute) {
         return attribute.replace("attribute", "in");
+    }
+    varyingCheck(varying, _isFragment) {
+        return varyingRegex.test(varying);
     }
     varyingProcessor(varying, isFragment) {
         return varying.replace("varying", isFragment ? "in" : "out");
@@ -12588,6 +12705,8 @@ class WebGLPipelineContext {
         this.fragmentCompilationError = null;
         this.programLinkError = null;
         this.programValidationError = null;
+        /** @internal */
+        this._isDisposed = false;
     }
     get isAsync() {
         return this.isParallelCompiled;
@@ -12638,6 +12757,7 @@ class WebGLPipelineContext {
      **/
     dispose() {
         this._uniforms = {};
+        this._isDisposed = true;
     }
     /**
      * @internal
@@ -13420,13 +13540,13 @@ class ThinEngine {
      */
     // Not mixed with Version for tooling purpose.
     static get NpmPackage() {
-        return "babylonjs@6.1.0";
+        return "babylonjs@6.11.2";
     }
     /**
      * Returns the current version of the framework
      */
     static get Version() {
-        return "6.1.0";
+        return "6.11.2";
     }
     /**
      * Returns a string describing the current engine
@@ -14144,6 +14264,7 @@ class ThinEngine {
             drawBuffersExtension: false,
             maxMSAASamples: 1,
             colorBufferFloat: !!(this._webGLVersion > 1 && this._gl.getExtension("EXT_color_buffer_float")),
+            colorBufferHalfFloat: !!(this._webGLVersion > 1 && this._gl.getExtension("EXT_color_buffer_half_float")),
             textureFloat: this._webGLVersion > 1 || this._gl.getExtension("OES_texture_float") ? true : false,
             textureHalfFloat: this._webGLVersion > 1 || this._gl.getExtension("OES_texture_half_float") ? true : false,
             textureHalfFloatRender: false,
@@ -14198,6 +14319,7 @@ class ThinEngine {
             if (this._webGLVersion === 1) {
                 this._gl.getQuery = this._caps.timerQuery.getQueryEXT.bind(this._caps.timerQuery);
             }
+            // WebGLQuery casted to number to avoid TS error
             this._caps.canUseTimestampForTimerQuery = ((_a = this._gl.getQuery(this._caps.timerQuery.TIMESTAMP_EXT, this._caps.timerQuery.QUERY_COUNTER_BITS_EXT)) !== null && _a !== void 0 ? _a : 0) > 0;
         }
         this._caps.maxAnisotropy = this._caps.textureAnisotropicFilterExtension
@@ -14666,16 +14788,30 @@ class ThinEngine {
     resize(forceSetSize = false) {
         let width;
         let height;
-        // Requery hardware scaling level to handle zoomed-in resizing.
+        // Re-query hardware scaling level to handle zoomed-in resizing.
         if (this.adaptToDeviceRatio) {
             const devicePixelRatio = IsWindowObjectExist() ? window.devicePixelRatio || 1.0 : 1.0;
             const changeRatio = this._lastDevicePixelRatio / devicePixelRatio;
             this._lastDevicePixelRatio = devicePixelRatio;
             this._hardwareScalingLevel *= changeRatio;
         }
-        if (IsWindowObjectExist()) {
-            width = this._renderingCanvas ? this._renderingCanvas.clientWidth || this._renderingCanvas.width : window.innerWidth;
-            height = this._renderingCanvas ? this._renderingCanvas.clientHeight || this._renderingCanvas.height : window.innerHeight;
+        if (IsWindowObjectExist() && IsDocumentAvailable()) {
+            // make sure it is a Node object, and is a part of the document.
+            if (this._renderingCanvas) {
+                const boundingRect = this._renderingCanvas.getBoundingClientRect
+                    ? this._renderingCanvas.getBoundingClientRect()
+                    : {
+                        // fallback to last solution in case the function doesn't exist
+                        width: this._renderingCanvas.width * this._hardwareScalingLevel,
+                        height: this._renderingCanvas.height * this._hardwareScalingLevel,
+                    };
+                width = this._renderingCanvas.clientWidth || boundingRect.width || this._renderingCanvas.width || 100;
+                height = this._renderingCanvas.clientHeight || boundingRect.height || this._renderingCanvas.height || 100;
+            }
+            else {
+                width = window.innerWidth;
+                height = window.innerHeight;
+            }
         }
         else {
             width = this._renderingCanvas ? this._renderingCanvas.width : 100;
@@ -15756,6 +15892,9 @@ class ThinEngine {
      */
     _isRenderingStateCompiled(pipelineContext) {
         const webGLPipelineContext = pipelineContext;
+        if (this._isDisposed || webGLPipelineContext._isDisposed) {
+            return false;
+        }
         if (this._gl.getProgramParameter(webGLPipelineContext.program, this._caps.parallelShaderCompile.COMPLETION_STATUS_KHR)) {
             this._finalizePipelineContext(webGLPipelineContext);
             return true;
@@ -17329,6 +17468,10 @@ class ThinEngine {
         // Video
         if (texture.video) {
             this._activeChannel = channel;
+            const videoInternalTexture = texture.getInternalTexture();
+            if (videoInternalTexture) {
+                videoInternalTexture._associatedChannel = channel;
+            }
             texture.update();
         }
         else if (texture.delayLoadState === 4) {
@@ -18218,7 +18361,7 @@ const FileToolsOptions = {
      */
     PreprocessUrl: (url) => {
         return url;
-    }
+    },
 };
 /**
  * Removes unwanted characters from an url
@@ -18293,7 +18436,7 @@ const LoadImage = (input, onLoad, onError, offlineProvider, mimeType = "", image
     if (typeof Image === "undefined" || ((_a = engine === null || engine === void 0 ? void 0 : engine._features.forceBitmapOverHTMLImageElement) !== null && _a !== void 0 ? _a : false)) {
         LoadFile(url, (data) => {
             engine
-                .createImageBitmap(new Blob([data], { type: mimeType }), { premultiplyAlpha: "none", ...imageBitmapOptions })
+                .createImageBitmap(new Blob([data], { type: mimeType }), Object.assign({ premultiplyAlpha: "none" }, imageBitmapOptions))
                 .then((imgBmp) => {
                 onLoad(imgBmp);
                 if (usingObjectURL) {
@@ -18423,7 +18566,7 @@ const ReadFile = (file, onSuccess, onProgress, useArrayBuffer, onError) => {
     const reader = new FileReader();
     const fileRequest = {
         onCompleteObservable: new Observable(),
-        abort: () => reader.abort()
+        abort: () => reader.abort(),
     };
     reader.onloadend = () => fileRequest.onCompleteObservable.notifyObservers(fileRequest);
     if (onError) {
@@ -18485,7 +18628,7 @@ const LoadFile = (fileOrUrl, onSuccess, onProgress, offlineProvider, useArrayBuf
     if (match) {
         const fileRequest = {
             onCompleteObservable: new Observable(),
-            abort: () => () => { }
+            abort: () => () => { },
         };
         try {
             const data = useArrayBuffer ? DecodeBase64UrlToBinary(url) : DecodeBase64UrlToString(url);
@@ -18531,7 +18674,7 @@ const RequestFile = (url, onSuccess, onProgress, offlineProvider, useArrayBuffer
     let aborted = false;
     const fileRequest = {
         onCompleteObservable: new Observable(),
-        abort: () => (aborted = true)
+        abort: () => (aborted = true),
     };
     const requestFile = () => {
         let request = new WebRequest();
@@ -18742,12 +18885,13 @@ const initSideEffects = () => {
     ShaderProcessor._FileToolsLoadFile = LoadFile;
 };
 initSideEffects();
+// deprecated
 /**
-* FileTools defined as any.
-* This should not be imported or used in future releases or in any module in the framework
-* @internal
-* @deprecated import the needed function from fileTools.ts
-*/
+ * FileTools defined as any.
+ * This should not be imported or used in future releases or in any module in the framework
+ * @internal
+ * @deprecated import the needed function from fileTools.ts
+ */
 let FileTools;
 /**
  * @param DecodeBase64UrlToBinary
@@ -18774,7 +18918,7 @@ const _injectLTSFileTools = (DecodeBase64UrlToBinary, DecodeBase64UrlToString, F
         LoadImage,
         ReadFile,
         RequestFile,
-        SetCorsBehavior
+        SetCorsBehavior,
     };
     Object.defineProperty(FileTools, "DefaultRetryStrategy", {
         get: function () {
@@ -18782,7 +18926,7 @@ const _injectLTSFileTools = (DecodeBase64UrlToBinary, DecodeBase64UrlToString, F
         },
         set: function (value) {
             FileToolsOptions.DefaultRetryStrategy = value;
-        }
+        },
     });
     Object.defineProperty(FileTools, "BaseUrl", {
         get: function () {
@@ -18790,7 +18934,7 @@ const _injectLTSFileTools = (DecodeBase64UrlToBinary, DecodeBase64UrlToString, F
         },
         set: function (value) {
             FileToolsOptions.BaseUrl = value;
-        }
+        },
     });
     Object.defineProperty(FileTools, "PreprocessUrl", {
         get: function () {
@@ -18798,7 +18942,7 @@ const _injectLTSFileTools = (DecodeBase64UrlToBinary, DecodeBase64UrlToString, F
         },
         set: function (value) {
             FileToolsOptions.PreprocessUrl = value;
-        }
+        },
     });
     Object.defineProperty(FileTools, "CorsBehavior", {
         get: function () {
@@ -18806,7 +18950,7 @@ const _injectLTSFileTools = (DecodeBase64UrlToBinary, DecodeBase64UrlToString, F
         },
         set: function (value) {
             FileToolsOptions.CorsBehavior = value;
-        }
+        },
     });
 };
 _injectLTSFileTools(DecodeBase64UrlToBinary, DecodeBase64UrlToString, FileToolsOptions, IsBase64DataUrl, IsFileURL, LoadFile, LoadImage, ReadFile, RequestFile, SetCorsBehavior);
@@ -19340,9 +19484,10 @@ class Tools {
      * @param successCallback defines the callback triggered once the data are available
      * @param mimeType defines the mime type of the result
      * @param fileName defines the filename to download. If present, the result will automatically be downloaded
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      * @returns a void promise
      */
-    static async DumpFramebuffer(width, height, engine, successCallback, mimeType = "image/png", fileName) {
+    static async DumpFramebuffer(width, height, engine, successCallback, mimeType = "image/png", fileName, quality) {
         throw _WarnImport("DumpTools");
     }
     /**
@@ -19355,7 +19500,7 @@ class Tools {
      * @param fileName defines the filename to download. If present, the result will automatically be downloaded
      * @param invertY true to invert the picture in the Y dimension
      * @param toArrayBuffer true to convert the data to an ArrayBuffer (encoded as `mimeType`) instead of a base64 string
-     * @param quality defines the quality of the result
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
     static DumpData(width, height, data, successCallback, mimeType = "image/png", fileName, invertY = false, toArrayBuffer = false, quality) {
         throw _WarnImport("DumpTools");
@@ -19369,23 +19514,26 @@ class Tools {
      * @param fileName defines the filename to download. If present, the result will automatically be downloaded
      * @param invertY true to invert the picture in the Y dimension
      * @param toArrayBuffer true to convert the data to an ArrayBuffer (encoded as `mimeType`) instead of a base64 string
-     * @param quality defines the quality of the result
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      * @returns a promise that resolve to the final data
      */
     static DumpDataAsync(width, height, data, mimeType = "image/png", fileName, invertY = false, toArrayBuffer = false, quality) {
         throw _WarnImport("DumpTools");
     }
+    static _IsOffScreenCanvas(canvas) {
+        return canvas.convertToBlob !== undefined;
+    }
     /**
      * Converts the canvas data to blob.
      * This acts as a polyfill for browsers not supporting the to blob function.
-     * @param canvas Defines the canvas to extract the data from
+     * @param canvas Defines the canvas to extract the data from (can be an offscreen canvas)
      * @param successCallback Defines the callback triggered once the data are available
      * @param mimeType Defines the mime type of the result
-     * @param quality defines the quality of the result
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
     static ToBlob(canvas, successCallback, mimeType = "image/png", quality) {
         // We need HTMLCanvasElement.toBlob for HD screenshots
-        if (!canvas.toBlob) {
+        if (!Tools._IsOffScreenCanvas(canvas) && !canvas.toBlob) {
             //  low performance polyfill based on toDataURL (https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob)
             canvas.toBlob = function (callback, type, quality) {
                 setTimeout(() => {
@@ -19397,9 +19545,19 @@ class Tools {
                 });
             };
         }
-        canvas.toBlob(function (blob) {
-            successCallback(blob);
-        }, mimeType, quality);
+        if (Tools._IsOffScreenCanvas(canvas)) {
+            canvas
+                .convertToBlob({
+                type: mimeType,
+                quality,
+            })
+                .then((blob) => successCallback(blob));
+        }
+        else {
+            canvas.toBlob(function (blob) {
+                successCallback(blob);
+            }, mimeType, quality);
+        }
     }
     /**
      * Download a Blob object
@@ -19435,24 +19593,43 @@ class Tools {
         }
     }
     /**
-     * Encodes the canvas data to base 64 or automatically download the result if filename is defined
-     * @param canvas canvas to get the data from.
-     * @param successCallback defines the callback triggered once the data are available
-     * @param mimeType defines the mime type of the result
-     * @param fileName defines he filename to download. If present, the result will automatically be downloaded
-     * @param quality defines the quality of the result
+     * Encodes the canvas data to base 64, or automatically downloads the result if `fileName` is defined.
+     * @param canvas The canvas to get the data from, which can be an offscreen canvas.
+     * @param successCallback The callback which is triggered once the data is available. If `fileName` is defined, the callback will be invoked after the download occurs, and the `data` argument will be an empty string.
+     * @param mimeType The mime type of the result.
+     * @param fileName The name of the file to download. If defined, the result will automatically be downloaded. If not defined, and `successCallback` is also not defined, the result will automatically be downloaded with an auto-generated file name.
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
     static EncodeScreenshotCanvasData(canvas, successCallback, mimeType = "image/png", fileName, quality) {
-        if (successCallback) {
-            const base64Image = canvas.toDataURL(mimeType, quality);
-            successCallback(base64Image);
-        }
-        else {
+        if (typeof fileName === "string" || !successCallback) {
             this.ToBlob(canvas, function (blob) {
                 if (blob) {
                     Tools.DownloadBlob(blob, fileName);
                 }
+                if (successCallback) {
+                    successCallback("");
+                }
             }, mimeType, quality);
+        }
+        else if (successCallback) {
+            if (Tools._IsOffScreenCanvas(canvas)) {
+                canvas
+                    .convertToBlob({
+                    type: mimeType,
+                    quality,
+                })
+                    .then((blob) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => {
+                        const base64data = reader.result;
+                        successCallback(base64data);
+                    };
+                });
+                return;
+            }
+            const base64Image = canvas.toDataURL(mimeType, quality);
+            successCallback(base64Image);
         }
     }
     /**
@@ -19510,9 +19687,11 @@ class Tools {
      * src parameter of an <img> to display it
      * @param mimeType defines the MIME type of the screenshot image (default: image/png).
      * Check your browser for supported MIME types
+     * @param forceDownload force the system to download the image even if a successCallback is provided
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    static CreateScreenshot(engine, camera, size, successCallback, mimeType = "image/png") {
+    static CreateScreenshot(engine, camera, size, successCallback, mimeType = "image/png", forceDownload = false, quality) {
         throw _WarnImport("ScreenshotTools");
     }
     /**
@@ -19527,11 +19706,12 @@ class Tools {
      * rendering at a higher or lower resolution
      * @param mimeType defines the MIME type of the screenshot image (default: image/png).
      * Check your browser for supported MIME types
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      * @returns screenshot as a string of base64-encoded characters. This string can be assigned
      * to the src parameter of an <img> to display it
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    static CreateScreenshotAsync(engine, camera, size, mimeType = "image/png") {
+    static CreateScreenshotAsync(engine, camera, size, mimeType = "image/png", quality) {
         throw _WarnImport("ScreenshotTools");
     }
     /**
@@ -19552,9 +19732,13 @@ class Tools {
      * @param samples Texture samples (default: 1)
      * @param antialiasing Whether antialiasing should be turned on or not (default: false)
      * @param fileName A name for for the downloaded file.
+     * @param renderSprites Whether the sprites should be rendered or not (default: false)
+     * @param enableStencilBuffer Whether the stencil buffer should be enabled or not (default: false)
+     * @param useLayerMask if the camera's layer mask should be used to filter what should be rendered (default: true)
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    static CreateScreenshotUsingRenderTarget(engine, camera, size, successCallback, mimeType = "image/png", samples = 1, antialiasing = false, fileName) {
+    static CreateScreenshotUsingRenderTarget(engine, camera, size, successCallback, mimeType = "image/png", samples = 1, antialiasing = false, fileName, renderSprites = false, enableStencilBuffer = false, useLayerMask = true, quality) {
         throw _WarnImport("ScreenshotTools");
     }
     /**
@@ -19573,10 +19757,14 @@ class Tools {
      * @param antialiasing Whether antialiasing should be turned on or not (default: false)
      * @param fileName A name for for the downloaded file.
      * @returns screenshot as a string of base64-encoded characters. This string can be assigned
+     * @param renderSprites Whether the sprites should be rendered or not (default: false)
+     * @param enableStencilBuffer Whether the stencil buffer should be enabled or not (default: false)
+     * @param useLayerMask if the camera's layer mask should be used to filter what should be rendered (default: true)
+     * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      * to the src parameter of an <img> to display it
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    static CreateScreenshotUsingRenderTargetAsync(engine, camera, size, mimeType = "image/png", samples = 1, antialiasing = false, fileName) {
+    static CreateScreenshotUsingRenderTargetAsync(engine, camera, size, mimeType = "image/png", samples = 1, antialiasing = false, fileName, renderSprites = false, enableStencilBuffer = false, useLayerMask = true, quality) {
         throw _WarnImport("ScreenshotTools");
     }
     /**
@@ -22173,6 +22361,12 @@ class Vector3 {
         return Vector3._ZeroReadOnly;
     }
     /**
+     * Gets a one Vector3 that must not be updated
+     */
+    static get OneReadOnly() {
+        return Vector3._OneReadOnly;
+    }
+    /**
      * Returns a new Vector3 set to (0.0, -1.0, 0.0)
      * Example Playground https://playground.babylonjs.com/#R1F8YU#71
      * @returns a new down Vector3
@@ -22942,6 +23136,7 @@ Vector3._RightHandedBackwardReadOnly = Vector3.Backward(true);
 Vector3._RightReadOnly = Vector3.Right();
 Vector3._LeftReadOnly = Vector3.Left();
 Vector3._ZeroReadOnly = Vector3.Zero();
+Vector3._OneReadOnly = Vector3.One();
 /**
  * Vector4 class created for EulerAngle class conversion to Quaternion
  */
@@ -24460,11 +24655,12 @@ class Quaternion {
      * @param vecFrom defines the direction vector from which to rotate
      * @param vecTo defines the direction vector to which to rotate
      * @param result the quaternion to store the result
+     * @param epsilon defines the minimal dot value to define vecs as opposite. Default: `BABYLON.Epsilon`
      * @returns the updated quaternion
      */
-    static FromUnitVectorsToRef(vecFrom, vecTo, result) {
+    static FromUnitVectorsToRef(vecFrom, vecTo, result, epsilon = Epsilon) {
         const r = Vector3.Dot(vecFrom, vecTo) + 1;
-        if (r < Epsilon) {
+        if (r < epsilon) {
             if (Math.abs(vecFrom.x) > Math.abs(vecFrom.z)) {
                 result.set(-vecFrom.y, vecFrom.x, 0, 0);
             }
@@ -26807,13 +27003,15 @@ const mtxConvertNDCToHalfZRange = Matrix.FromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0
 /* eslint-disable @typescript-eslint/naming-convention */
 const __decoratorInitialStore = {};
 const __mergedStore = {};
-const _copySource = function (creationFunction, source, instanciate) {
+const _copySource = function (creationFunction, source, instanciate, options = {}) {
     const destination = creationFunction();
     // Tags
     if (Tags && Tags.HasTags(source)) {
         Tags.AddTagsTo(destination, Tags.GetTags(source, true));
     }
     const classStore = getMergedStore(destination);
+    // Map from source texture uniqueId to destination texture
+    const textureMap = {};
     // Properties
     for (const property in classStore) {
         const propertyDescriptor = classStore[property];
@@ -26827,7 +27025,13 @@ const _copySource = function (creationFunction, source, instanciate) {
                     destination[property] = sourceProperty;
                     break;
                 case 1: // Texture
-                    destination[property] = instanciate || sourceProperty.isRenderTarget ? sourceProperty : sourceProperty.clone();
+                    if (options.cloneTexturesOnlyOnce && textureMap[sourceProperty.uniqueId]) {
+                        destination[property] = textureMap[sourceProperty.uniqueId];
+                    }
+                    else {
+                        destination[property] = instanciate || sourceProperty.isRenderTarget ? sourceProperty : sourceProperty.clone();
+                        textureMap[sourceProperty.uniqueId] = destination[property];
+                    }
                     break;
                 case 2: // Color3
                 case 3: // FresnelParameters
@@ -27130,8 +27334,8 @@ class SerializationHelper {
      * @param source defines the source object
      * @returns the cloned object
      */
-    static Clone(creationFunction, source) {
-        return _copySource(creationFunction, source, false);
+    static Clone(creationFunction, source, options = {}) {
+        return _copySource(creationFunction, source, false, options);
     }
     /**
      * Instanciates a new object based on a source one (some data will be shared between both object)
@@ -27962,6 +28166,28 @@ class Node {
      */
     getAnimationRange(name) {
         return this._ranges[name] || null;
+    }
+    /**
+     * Clone the current node
+     * @param name Name of the new clone
+     * @param newParent New parent for the clone
+     * @param doNotCloneChildren Do not clone children hierarchy
+     * @returns the new transform node
+     */
+    clone(name, newParent, doNotCloneChildren) {
+        const result = SerializationHelper.Clone(() => new Node(name, this.getScene()), this);
+        if (newParent) {
+            result.parent = newParent;
+        }
+        if (!doNotCloneChildren) {
+            // Children
+            const directDescendants = this.getDescendants(true);
+            for (let index = 0; index < directDescendants.length; index++) {
+                const child = directDescendants[index];
+                child.clone(name + "." + child.name, result);
+            }
+        }
+        return result;
     }
     /**
      * Gets the list of all animation ranges defined on this node
@@ -30148,6 +30374,7 @@ class MaterialDefines {
         this._areLightsDirty = true;
         this._areFresnelDirty = true;
         this._areMiscDirty = true;
+        this._arePrePassDirty = false;
         this._areImageProcessingDirty = true;
         this._isDirty = true;
     }
@@ -33061,16 +33288,25 @@ class PickingInfo {
         if (!this.pickedMesh || (useVerticesNormals && !this.pickedMesh.isVerticesDataPresent(VertexBuffer.NormalKind))) {
             return null;
         }
-        const indices = this.pickedMesh.getIndices();
-        if (!indices) {
-            return null;
+        let indices = this.pickedMesh.getIndices();
+        if ((indices === null || indices === void 0 ? void 0 : indices.length) === 0) {
+            indices = null;
         }
         let result;
+        const tmp0 = TmpVectors.Vector3[0];
+        const tmp1 = TmpVectors.Vector3[1];
+        const tmp2 = TmpVectors.Vector3[2];
         if (useVerticesNormals) {
             const normals = this.pickedMesh.getVerticesData(VertexBuffer.NormalKind);
-            let normal0 = Vector3.FromArray(normals, indices[this.faceId * 3] * 3);
-            let normal1 = Vector3.FromArray(normals, indices[this.faceId * 3 + 1] * 3);
-            let normal2 = Vector3.FromArray(normals, indices[this.faceId * 3 + 2] * 3);
+            let normal0 = indices
+                ? Vector3.FromArrayToRef(normals, indices[this.faceId * 3] * 3, tmp0)
+                : tmp0.copyFromFloats(normals[this.faceId * 3 * 3], normals[this.faceId * 3 * 3 + 1], normals[this.faceId * 3 * 3 + 2]);
+            let normal1 = indices
+                ? Vector3.FromArrayToRef(normals, indices[this.faceId * 3 + 1] * 3, tmp1)
+                : tmp1.copyFromFloats(normals[(this.faceId * 3 + 1) * 3], normals[(this.faceId * 3 + 1) * 3 + 1], normals[(this.faceId * 3 + 1) * 3 + 2]);
+            let normal2 = indices
+                ? Vector3.FromArrayToRef(normals, indices[this.faceId * 3 + 2] * 3, tmp2)
+                : tmp2.copyFromFloats(normals[(this.faceId * 3 + 2) * 3], normals[(this.faceId * 3 + 2) * 3 + 1], normals[(this.faceId * 3 + 2) * 3 + 2]);
             normal0 = normal0.scale(this.bu);
             normal1 = normal1.scale(this.bv);
             normal2 = normal2.scale(1.0 - this.bu - this.bv);
@@ -33078,9 +33314,15 @@ class PickingInfo {
         }
         else {
             const positions = this.pickedMesh.getVerticesData(VertexBuffer.PositionKind);
-            const vertex1 = Vector3.FromArray(positions, indices[this.faceId * 3] * 3);
-            const vertex2 = Vector3.FromArray(positions, indices[this.faceId * 3 + 1] * 3);
-            const vertex3 = Vector3.FromArray(positions, indices[this.faceId * 3 + 2] * 3);
+            const vertex1 = indices
+                ? Vector3.FromArrayToRef(positions, indices[this.faceId * 3] * 3, tmp0)
+                : tmp0.copyFromFloats(positions[this.faceId * 3 * 3], positions[this.faceId * 3 * 3 + 1], positions[this.faceId * 3 * 3 + 2]);
+            const vertex2 = indices
+                ? Vector3.FromArrayToRef(positions, indices[this.faceId * 3 + 1] * 3, tmp1)
+                : tmp1.copyFromFloats(positions[(this.faceId * 3 + 1) * 3], positions[(this.faceId * 3 + 1) * 3 + 1], positions[(this.faceId * 3 + 1) * 3 + 2]);
+            const vertex3 = indices
+                ? Vector3.FromArrayToRef(positions, indices[this.faceId * 3 + 2] * 3, tmp2)
+                : tmp2.copyFromFloats(positions[(this.faceId * 3 + 2) * 3], positions[(this.faceId * 3 + 2) * 3 + 1], positions[(this.faceId * 3 + 2) * 3 + 2]);
             const p1p2 = vertex1.subtract(vertex2);
             const p3p2 = vertex3.subtract(vertex2);
             result = Vector3.Cross(p1p2, p3p2);
@@ -36045,6 +36287,9 @@ class InputManager {
         }
         this._setCursorAndPointerOverMesh(pickResult, evt, scene);
         for (const step of scene._pointerMoveStage) {
+            // If _pointerMoveState is defined, we have an active spriteManager and can't use Lazy Picking
+            // Therefore, we need to force a pick to update the pickResult
+            pickResult = pickResult || this._pickMove(evt);
             const isMeshPicked = (pickResult === null || pickResult === void 0 ? void 0 : pickResult.pickedMesh) ? true : false;
             pickResult = step.action(this._unTranslatedPointerX, this._unTranslatedPointerY, pickResult, isMeshPicked, canvas);
         }
@@ -36111,7 +36356,7 @@ class InputManager {
     /** @internal */
     _pickMove(evt) {
         const scene = this._scene;
-        const pickResult = scene.pick(this._unTranslatedPointerX, this._unTranslatedPointerY, scene.pointerMovePredicate, false, scene.cameraToUseForPointers, scene.pointerMoveTrianglePredicate);
+        const pickResult = scene.pick(this._unTranslatedPointerX, this._unTranslatedPointerY, scene.pointerMovePredicate, scene.pointerMoveFastCheck, scene.cameraToUseForPointers, scene.pointerMoveTrianglePredicate);
         this._setCursorAndPointerOverMesh(pickResult, evt, scene);
         return pickResult;
     }
@@ -36345,7 +36590,7 @@ class InputManager {
             if (!this._meshPickProceed) {
                 const pickResult = scene.skipPointerUpPicking || (scene._registeredActions === 0 && !this._checkForPicking() && !scene.onPointerUp)
                     ? null
-                    : scene.pick(this._unTranslatedPointerX, this._unTranslatedPointerY, scene.pointerUpPredicate, false, scene.cameraToUseForPointers);
+                    : scene.pick(this._unTranslatedPointerX, this._unTranslatedPointerY, scene.pointerUpPredicate, scene.pointerUpFastCheck, scene.cameraToUseForPointers);
                 this._currentPickResult = pickResult;
                 if (pickResult) {
                     act = pickResult.hit && pickResult.pickedMesh ? pickResult.pickedMesh._getActionManagerForTrigger() : null;
@@ -36519,7 +36764,7 @@ class InputManager {
                     (mesh.enablePointerMoveEvents || scene.constantlyUpdateMeshUnderPointer || mesh._getActionManagerForTrigger() !== null) &&
                     (!scene.cameraToUseForPointers || (scene.cameraToUseForPointers.layerMask & mesh.layerMask) !== 0);
             }
-            const pickResult = scene._registeredActions > 0 ? this._pickMove(evt) : null;
+            const pickResult = scene._registeredActions > 0 || scene.constantlyUpdateMeshUnderPointer ? this._pickMove(evt) : null;
             this._processPointerMove(pickResult, evt);
         };
         this._onPointerDown = (evt) => {
@@ -36589,7 +36834,7 @@ class InputManager {
                 pickResult = new PickingInfo();
             }
             else {
-                pickResult = scene.pick(this._unTranslatedPointerX, this._unTranslatedPointerY, scene.pointerDownPredicate, false, scene.cameraToUseForPointers);
+                pickResult = scene.pick(this._unTranslatedPointerX, this._unTranslatedPointerY, scene.pointerDownPredicate, scene.pointerDownFastCheck, scene.cameraToUseForPointers);
             }
             this._processPointerDown(pickResult, evt);
         };
@@ -36972,6 +37217,13 @@ class PerfCounter {
             this._fetchResult();
         }
     }
+    /**
+     * Call this method to end the monitoring of a frame.
+     * This scenario is typically used when you accumulate monitoring time many times for a single frame, you call this method at the end of the frame, after beginMonitoring to start recording and endMonitoring(false) to accumulated the recorded time to the PerfCounter or addCount() to accumulate a monitored count.
+     */
+    endFrame() {
+        this._fetchResult();
+    }
     _fetchResult() {
         this._totalAccumulated += this._current;
         this._lastSecAccumulated += this._current;
@@ -37106,6 +37358,38 @@ LightConstants.LIGHTTYPEID_SPOTLIGHT = 2;
  * Light type const id of the hemispheric light.
  */
 LightConstants.LIGHTTYPEID_HEMISPHERICLIGHT = 3;
+
+/**
+ * Class used to store configuration data associated with pointer picking
+ */
+class PointerPickingConfiguration {
+    constructor() {
+        /**
+         * Gets or sets a predicate used to select candidate meshes for a pointer down event
+         */
+        this.pointerDownFastCheck = false;
+        /**
+         * Gets or sets a predicate used to select candidate meshes for a pointer up event
+         */
+        this.pointerUpFastCheck = false;
+        /**
+         * Gets or sets a predicate used to select candidate meshes for a pointer move event
+         */
+        this.pointerMoveFastCheck = false;
+        /**
+         * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer move event occurs.
+         */
+        this.skipPointerMovePicking = false;
+        /**
+         * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer down event occurs.
+         */
+        this.skipPointerDownPicking = false;
+        /**
+         * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer up event occurs.  Off by default.
+         */
+        this.skipPointerUpPicking = false;
+    }
+}
 
 /**
  * Define how the scene should favor performance over ease of use
@@ -37288,6 +37572,87 @@ class Scene extends AbstractScene {
             this.onAfterCameraRenderObservable.remove(this._onAfterCameraRenderObserver);
         }
         this._onAfterCameraRenderObserver = this.onAfterCameraRenderObservable.add(callback);
+    }
+    /**
+     * Gets or sets a predicate used to select candidate meshes for a pointer down event
+     */
+    get pointerDownPredicate() {
+        return this._pointerPickingConfiguration.pointerDownPredicate;
+    }
+    set pointerDownPredicate(value) {
+        this._pointerPickingConfiguration.pointerDownPredicate = value;
+    }
+    /**
+     * Gets or sets a predicate used to select candidate meshes for a pointer up event
+     */
+    get pointerUpPredicate() {
+        return this._pointerPickingConfiguration.pointerUpPredicate;
+    }
+    set pointerUpPredicate(value) {
+        this._pointerPickingConfiguration.pointerUpPredicate = value;
+    }
+    /**
+     * Gets or sets a predicate used to select candidate meshes for a pointer move event
+     */
+    get pointerMovePredicate() {
+        return this._pointerPickingConfiguration.pointerMovePredicate;
+    }
+    set pointerMovePredicate(value) {
+        this._pointerPickingConfiguration.pointerMovePredicate = value;
+    }
+    /**
+     * Gets or sets a predicate used to select candidate meshes for a pointer down event
+     */
+    get pointerDownFastCheck() {
+        return this._pointerPickingConfiguration.pointerDownFastCheck;
+    }
+    set pointerDownFastCheck(value) {
+        this._pointerPickingConfiguration.pointerDownFastCheck = value;
+    }
+    /**
+     * Gets or sets a predicate used to select candidate meshes for a pointer up event
+     */
+    get pointerUpFastCheck() {
+        return this._pointerPickingConfiguration.pointerUpFastCheck;
+    }
+    set pointerUpFastCheck(value) {
+        this._pointerPickingConfiguration.pointerUpFastCheck = value;
+    }
+    /**
+     * Gets or sets a predicate used to select candidate meshes for a pointer move event
+     */
+    get pointerMoveFastCheck() {
+        return this._pointerPickingConfiguration.pointerMoveFastCheck;
+    }
+    set pointerMoveFastCheck(value) {
+        this._pointerPickingConfiguration.pointerMoveFastCheck = value;
+    }
+    /**
+     * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer move event occurs.
+     */
+    get skipPointerMovePicking() {
+        return this._pointerPickingConfiguration.skipPointerMovePicking;
+    }
+    set skipPointerMovePicking(value) {
+        this._pointerPickingConfiguration.skipPointerMovePicking = value;
+    }
+    /**
+     * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer down event occurs.
+     */
+    get skipPointerDownPicking() {
+        return this._pointerPickingConfiguration.skipPointerDownPicking;
+    }
+    set skipPointerDownPicking(value) {
+        this._pointerPickingConfiguration.skipPointerDownPicking = value;
+    }
+    /**
+     * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer up event occurs.  Off by default.
+     */
+    get skipPointerUpPicking() {
+        return this._pointerPickingConfiguration.skipPointerUpPicking;
+    }
+    set skipPointerUpPicking(value) {
+        this._pointerPickingConfiguration.skipPointerUpPicking = value;
     }
     /**
      * Gets the pointer coordinates without any translation (ie. straight out of the pointer event)
@@ -37886,18 +38251,8 @@ class Scene extends AbstractScene {
         // Animations
         /** @internal */
         this._registeredForLateAnimationBindings = new SmartArrayNoDuplicate(256);
-        /**
-         * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer move event occurs.
-         */
-        this.skipPointerMovePicking = false;
-        /**
-         * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer down event occurs.
-         */
-        this.skipPointerDownPicking = false;
-        /**
-         * Gets or sets a boolean indicating if the user want to entirely skip the picking phase when a pointer up event occurs.  Off by default.
-         */
-        this.skipPointerUpPicking = false;
+        // Pointers
+        this._pointerPickingConfiguration = new PointerPickingConfiguration();
         /**
          * This observable event is triggered when any ponter event is triggered. It is registered during Scene.attachControl() and it is called BEFORE the 3D engine process anything (mesh/sprite picking for instance).
          * You have the possibility to skip the process and the call to onPointerObservable by setting PointerInfoPre.skipOnPointerObservable to true
@@ -38215,11 +38570,11 @@ class Scene extends AbstractScene {
         this._geometriesByUniqueId = null;
         this._defaultMeshCandidates = {
             data: [],
-            length: 0
+            length: 0,
         };
         this._defaultSubMeshCandidates = {
             data: [],
-            length: 0
+            length: 0,
         };
         this._preventFreeActiveMeshesAndRenderingGroups = false;
         /** @internal */
@@ -38244,13 +38599,7 @@ class Scene extends AbstractScene {
          */
         this._perfCollector = null;
         this.activeCameras = new Array();
-        const fullOptions = {
-            useGeometryUniqueIdsMap: true,
-            useMaterialMeshMap: true,
-            useClonedMeshMap: true,
-            virtual: false,
-            ...options
-        };
+        const fullOptions = Object.assign({ useGeometryUniqueIdsMap: true, useMaterialMeshMap: true, useClonedMeshMap: true, virtual: false }, options);
         this._engine = engine || EngineStore.LastCreatedEngine;
         if (!fullOptions.virtual) {
             EngineStore._LastCreatedScene = this;
@@ -38532,16 +38881,21 @@ class Scene extends AbstractScene {
      * @returns true if all required resources are ready
      */
     isReady(checkRenderTargets = true) {
+        var _a, _b, _c;
         if (this._isDisposed) {
             return false;
         }
         let index;
         const engine = this.getEngine();
+        const currentRenderPassId = engine.currentRenderPassId;
+        engine.currentRenderPassId = (_b = (_a = this.activeCamera) === null || _a === void 0 ? void 0 : _a.renderPassId) !== null && _b !== void 0 ? _b : currentRenderPassId;
         let isReady = true;
         // Pending data
         if (this._pendingData.length > 0) {
             isReady = false;
         }
+        // Ensures that the pre-pass renderer is enabled if it is to be enabled.
+        (_c = this.prePassRenderer) === null || _c === void 0 ? void 0 : _c.update();
         // Meshes
         if (checkRenderTargets) {
             this._processedMaterials.reset();
@@ -38594,19 +38948,12 @@ class Scene extends AbstractScene {
                 }
             }
         }
-        if (!isReady) {
-            return false;
-        }
-        // Effects
-        if (!engine.areAllEffectsReady()) {
-            return false;
-        }
         // Render targets
         if (checkRenderTargets) {
             for (index = 0; index < this._materialsRenderTargets.length; ++index) {
                 const rtt = this._materialsRenderTargets.data[index];
                 if (!rtt.isReadyForRendering()) {
-                    return false;
+                    isReady = false;
                 }
             }
         }
@@ -38614,29 +38961,42 @@ class Scene extends AbstractScene {
         for (index = 0; index < this.geometries.length; index++) {
             const geometry = this.geometries[index];
             if (geometry.delayLoadState === 2) {
-                return false;
+                isReady = false;
             }
         }
         // Post-processes
         if (this.activeCameras && this.activeCameras.length > 0) {
             for (const camera of this.activeCameras) {
                 if (!camera.isReady(true)) {
-                    return false;
+                    isReady = false;
                 }
             }
         }
         else if (this.activeCamera) {
             if (!this.activeCamera.isReady(true)) {
-                return false;
+                isReady = false;
             }
         }
         // Particles
         for (const particleSystem of this.particleSystems) {
             if (!particleSystem.isReady()) {
-                return false;
+                isReady = false;
             }
         }
-        return true;
+        // Layers
+        if (this.layers) {
+            for (const layer of this.layers) {
+                if (!layer.isReady()) {
+                    isReady = false;
+                }
+            }
+        }
+        // Effects
+        if (!engine.areAllEffectsReady()) {
+            isReady = false;
+        }
+        engine.currentRenderPassId = currentRenderPassId;
+        return isReady;
     }
     /** Resets all cached information relative to material (including effect and visibility) */
     resetCachedMaterial() {
@@ -40290,6 +40650,7 @@ class Scene extends AbstractScene {
                 mesh._postActivate();
             }
         }
+        this.onAfterActiveMeshesEvaluationObservable.notifyObservers(this);
         // Particle systems
         if (this.particlesEnabled) {
             this.onBeforeParticlesRenderingObservable.notifyObservers(this);
@@ -41058,7 +41419,7 @@ class Scene extends AbstractScene {
         });
         return {
             min: min,
-            max: max
+            max: max,
         };
     }
     // Picking
@@ -41138,7 +41499,9 @@ class Scene extends AbstractScene {
         // Dummy info if picking as not been imported
         return new PickingInfo();
     }
-    /** Use the given ray to pick a mesh in the scene
+    /**
+     * Use the given ray to pick a mesh in the scene. A mesh triangle can be picked both from its front and back sides,
+     * irrespective of orientation.
      * @param ray The ray to use to pick meshes
      * @param predicate Predicate function used to determine eligible meshes. Can be set to null. In this case, a mesh must have isPickable set to true
      * @param fastCheck defines if the first intersection will be used (and not the closest)
@@ -41149,7 +41512,8 @@ class Scene extends AbstractScene {
         throw _WarnImport("Ray");
     }
     /**
-     * Launch a ray to try to pick a mesh in the scene
+     * Launch a ray to try to pick a mesh in the scene. A mesh triangle can be picked both from its front and back sides,
+     * irrespective of orientation.
      * @param x X position on screen
      * @param y Y position on screen
      * @param predicate Predicate function used to determine eligible meshes. Can be set to null. In this case, a mesh must be enabled, visible and with isPickable set to true
@@ -41421,6 +41785,196 @@ class Scene extends AbstractScene {
     getPerfCollector() {
         throw _WarnImport("performanceViewerSceneExtension");
     }
+    // deprecated
+    /**
+     * Sets the active camera of the scene using its Id
+     * @param id defines the camera's Id
+     * @returns the new active camera or null if none found.
+     * @deprecated Please use setActiveCameraById instead
+     */
+    setActiveCameraByID(id) {
+        return this.setActiveCameraById(id);
+    }
+    /**
+     * Get a material using its id
+     * @param id defines the material's Id
+     * @returns the material or null if none found.
+     * @deprecated Please use getMaterialById instead
+     */
+    getMaterialByID(id) {
+        return this.getMaterialById(id);
+    }
+    /**
+     * Gets a the last added material using a given id
+     * @param id defines the material's Id
+     * @returns the last material with the given id or null if none found.
+     * @deprecated Please use getLastMaterialById instead
+     */
+    getLastMaterialByID(id) {
+        return this.getLastMaterialById(id);
+    }
+    /**
+     * Get a texture using its unique id
+     * @param uniqueId defines the texture's unique id
+     * @returns the texture or null if none found.
+     * @deprecated Please use getTextureByUniqueId instead
+     */
+    getTextureByUniqueID(uniqueId) {
+        return this.getTextureByUniqueId(uniqueId);
+    }
+    /**
+     * Gets a camera using its Id
+     * @param id defines the Id to look for
+     * @returns the camera or null if not found
+     * @deprecated Please use getCameraById instead
+     */
+    getCameraByID(id) {
+        return this.getCameraById(id);
+    }
+    /**
+     * Gets a camera using its unique Id
+     * @param uniqueId defines the unique Id to look for
+     * @returns the camera or null if not found
+     * @deprecated Please use getCameraByUniqueId instead
+     */
+    getCameraByUniqueID(uniqueId) {
+        return this.getCameraByUniqueId(uniqueId);
+    }
+    /**
+     * Gets a bone using its Id
+     * @param id defines the bone's Id
+     * @returns the bone or null if not found
+     * @deprecated Please use getBoneById instead
+     */
+    getBoneByID(id) {
+        return this.getBoneById(id);
+    }
+    /**
+     * Gets a light node using its Id
+     * @param id defines the light's Id
+     * @returns the light or null if none found.
+     * @deprecated Please use getLightById instead
+     */
+    getLightByID(id) {
+        return this.getLightById(id);
+    }
+    /**
+     * Gets a light node using its scene-generated unique Id
+     * @param uniqueId defines the light's unique Id
+     * @returns the light or null if none found.
+     * @deprecated Please use getLightByUniqueId instead
+     */
+    getLightByUniqueID(uniqueId) {
+        return this.getLightByUniqueId(uniqueId);
+    }
+    /**
+     * Gets a particle system by Id
+     * @param id defines the particle system Id
+     * @returns the corresponding system or null if none found
+     * @deprecated Please use getParticleSystemById instead
+     */
+    getParticleSystemByID(id) {
+        return this.getParticleSystemById(id);
+    }
+    /**
+     * Gets a geometry using its Id
+     * @param id defines the geometry's Id
+     * @returns the geometry or null if none found.
+     * @deprecated Please use getGeometryById instead
+     */
+    getGeometryByID(id) {
+        return this.getGeometryById(id);
+    }
+    /**
+     * Gets the first added mesh found of a given Id
+     * @param id defines the Id to search for
+     * @returns the mesh found or null if not found at all
+     * @deprecated Please use getMeshById instead
+     */
+    getMeshByID(id) {
+        return this.getMeshById(id);
+    }
+    /**
+     * Gets a mesh with its auto-generated unique Id
+     * @param uniqueId defines the unique Id to search for
+     * @returns the found mesh or null if not found at all.
+     * @deprecated Please use getMeshByUniqueId instead
+     */
+    getMeshByUniqueID(uniqueId) {
+        return this.getMeshByUniqueId(uniqueId);
+    }
+    /**
+     * Gets a the last added mesh using a given Id
+     * @param id defines the Id to search for
+     * @returns the found mesh or null if not found at all.
+     * @deprecated Please use getLastMeshById instead
+     */
+    getLastMeshByID(id) {
+        return this.getLastMeshById(id);
+    }
+    /**
+     * Gets a list of meshes using their Id
+     * @param id defines the Id to search for
+     * @returns a list of meshes
+     * @deprecated Please use getMeshesById instead
+     */
+    getMeshesByID(id) {
+        return this.getMeshesById(id);
+    }
+    /**
+     * Gets the first added transform node found of a given Id
+     * @param id defines the Id to search for
+     * @returns the found transform node or null if not found at all.
+     * @deprecated Please use getTransformNodeById instead
+     */
+    getTransformNodeByID(id) {
+        return this.getTransformNodeById(id);
+    }
+    /**
+     * Gets a transform node with its auto-generated unique Id
+     * @param uniqueId defines the unique Id to search for
+     * @returns the found transform node or null if not found at all.
+     * @deprecated Please use getTransformNodeByUniqueId instead
+     */
+    getTransformNodeByUniqueID(uniqueId) {
+        return this.getTransformNodeByUniqueId(uniqueId);
+    }
+    /**
+     * Gets a list of transform nodes using their Id
+     * @param id defines the Id to search for
+     * @returns a list of transform nodes
+     * @deprecated Please use getTransformNodesById instead
+     */
+    getTransformNodesByID(id) {
+        return this.getTransformNodesById(id);
+    }
+    /**
+     * Gets a node (Mesh, Camera, Light) using a given Id
+     * @param id defines the Id to search for
+     * @returns the found node or null if not found at all
+     * @deprecated Please use getNodeById instead
+     */
+    getNodeByID(id) {
+        return this.getNodeById(id);
+    }
+    /**
+     * Gets a the last added node (Mesh, Camera, Light) using a given Id
+     * @param id defines the Id to search for
+     * @returns the found node or null if not found at all
+     * @deprecated Please use getLastEntryById instead
+     */
+    getLastEntryByID(id) {
+        return this.getLastEntryById(id);
+    }
+    /**
+     * Gets a skeleton using a given Id (if many are found, this function will pick the last one)
+     * @param id defines the Id to search for
+     * @returns the found skeleton or null if not found at all.
+     * @deprecated Please use getLastSkeletonById instead
+     */
+    getLastSkeletonByID(id) {
+        return this.getLastSkeletonById(id);
+    }
 }
 /** The fog is deactivated */
 Scene.FOGMODE_NONE = 0;
@@ -41440,72 +41994,6 @@ Scene.MinDeltaTime = 1.0;
  * @see https://doc.babylonjs.com/features/featuresDeepDive/animation/advanced_animations#deterministic-lockstep
  */
 Scene.MaxDeltaTime = 1000.0;
-/**
- * @internal
- */
-Scene.prototype.setActiveCameraByID = function (id) {
-    return this.setActiveCameraById(id);
-};
-Scene.prototype.getLastMaterialByID = function (id) {
-    return this.getLastMaterialById(id);
-};
-Scene.prototype.getMaterialByID = function (id) {
-    return this.getMaterialById(id);
-};
-Scene.prototype.getTextureByUniqueID = function (uniqueId) {
-    return this.getTextureByUniqueId(uniqueId);
-};
-Scene.prototype.getCameraByID = function (id) {
-    return this.getCameraById(id);
-};
-Scene.prototype.getCameraByUniqueID = function (uniqueId) {
-    return this.getCameraByUniqueId(uniqueId);
-};
-Scene.prototype.getBoneByID = function (id) {
-    return this.getBoneById(id);
-};
-Scene.prototype.getLightByID = function (id) {
-    return this.getLightById(id);
-};
-Scene.prototype.getLightByUniqueID = function (uniqueId) {
-    return this.getLightByUniqueId(uniqueId);
-};
-Scene.prototype.getParticleSystemByID = function (id) {
-    return this.getParticleSystemById(id);
-};
-Scene.prototype.getGeometryByID = function (id) {
-    return this.getGeometryById(id);
-};
-Scene.prototype.getMeshByID = function (id) {
-    return this.getMeshById(id);
-};
-Scene.prototype.getMeshesByID = function (id) {
-    return this.getMeshesById(id);
-};
-Scene.prototype.getTransformNodeByID = function (id) {
-    return this.getTransformNodeById(id);
-};
-Scene.prototype.getTransformNodeByUniqueID = function (uniqueId) {
-    return this.getTransformNodeByUniqueId(uniqueId);
-};
-Scene.prototype.getTransformNodesByID = function (id) {
-    return this.getTransformNodesById(id);
-};
-Scene.prototype.getMeshByUniqueID = function (uniqueId) {
-    return this.getMeshByUniqueId(uniqueId);
-};
-Scene.prototype.getLastMeshByID = function (id) {
-    return this.getLastMeshById(id);
-};
-Scene.prototype.getLastEntryByID = function (id) {
-    return this.getLastEntryById(id);
-};
-Scene.prototype.getNodeByID = function (id) {
-    return this.getNodeById(id);
-};
-Scene.prototype.getLastSkeletonByID = function (id) {
-    return this.getLastSkeletonById(id);
-};
 
 /**
  * This class contains the various kinds of data on every vertex of a mesh used in determining its shape and appearance
@@ -47039,11 +47527,11 @@ let Engine$1 = class Engine extends ThinEngine {
         var _a;
         let postProcessInput = null;
         if (postProcess) {
-            if (postProcess._textures.data[postProcess._currentRenderTextureInd]) {
-                postProcessInput = postProcess._textures.data[postProcess._currentRenderTextureInd];
-            }
-            else if (postProcess._forcedOutputTexture) {
+            if (postProcess._forcedOutputTexture) {
                 postProcessInput = postProcess._forcedOutputTexture;
+            }
+            else if (postProcess._textures.data[postProcess._currentRenderTextureInd]) {
+                postProcessInput = postProcess._textures.data[postProcess._currentRenderTextureInd];
             }
         }
         this._bindTexture(channel, (_a = postProcessInput === null || postProcessInput === void 0 ? void 0 : postProcessInput.texture) !== null && _a !== void 0 ? _a : null, name);
@@ -47601,7 +48089,6 @@ let Engine$1 = class Engine extends ThinEngine {
         // no more engines left in the engine store? Notify!
         if (!Engine.Instances.length) {
             EngineStore.OnEnginesDisposedObservable.notifyObservers(this);
-            EngineStore.OnEnginesDisposedObservable.clear();
         }
         // Observables
         this.onResizeObservable.clear();
@@ -48000,6 +48487,7 @@ var Coordinate;
     Coordinate[Coordinate["Z"] = 2] = "Z";
 })(Coordinate || (Coordinate = {}));
 
+const convertRHSToLHS = Matrix.Compose(Vector3.One(), Quaternion.FromEulerAngles(0, Math.PI, 0), Vector3.Zero());
 /**
  * A TransformNode is an object that is not rendered but can be used as a center of transformation. This can decrease memory usage and increase rendering speed compared to using an empty mesh as a parent and is less complicated than using a pivot matrix.
  * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/transforms/parent_pivot/transform_node
@@ -48689,8 +49177,8 @@ class TransformNode extends Node {
         this._currentParentWhenAttachingToBone = this.parent;
         this._transformToBoneReferal = affectedTransformNode;
         this.parent = bone;
-        bone.getSkeleton().prepare();
-        if (bone.getWorldMatrix().determinant() < 0) {
+        bone.getSkeleton().prepare(); // make sure bone.getFinalMatrix() is up to date
+        if (bone.getFinalMatrix().determinant() < 0) {
             this.scalingDeterminant *= -1;
         }
         return this;
@@ -48978,6 +49466,9 @@ class TransformNode extends Node {
             this._worldMatrix.getTranslationToRef(storedTranslation); // Save translation
             // Cancel camera rotation
             TmpVectors.Matrix[1].copyFrom(camera.getViewMatrix());
+            if (this._scene.useRightHandedSystem) {
+                TmpVectors.Matrix[1].multiplyToRef(convertRHSToLHS, TmpVectors.Matrix[1]);
+            }
             TmpVectors.Matrix[1].setTranslationFromFloats(0, 0, 0);
             TmpVectors.Matrix[1].invertToRef(TmpVectors.Matrix[0]);
             if ((this.billboardMode & TransformNode.BILLBOARDMODE_ALL) !== TransformNode.BILLBOARDMODE_ALL) {
@@ -49614,7 +50105,10 @@ class AbstractMesh extends TransformNode {
         const oldValue = this._internalAbstractMeshDataInfo._visibility;
         this._internalAbstractMeshDataInfo._visibility = value;
         if ((oldValue === 1 && value !== 1) || (oldValue !== 1 && value === 1)) {
-            this._markSubMeshesAsMiscDirty();
+            this._markSubMeshesAsDirty((defines) => {
+                defines.markAsMiscDirty();
+                defines.markAsPrePassDirty();
+            });
         }
     }
     /**
@@ -49722,7 +50216,7 @@ class AbstractMesh extends TransformNode {
         this._markSubMeshesAsAttributesDirty();
     }
     /**
-     * Gets or sets a boolean indicating that bone animations must be computed by the CPU (false by default)
+     * Gets or sets a boolean indicating that bone animations must be computed by the GPU (true by default)
      */
     get computeBonesUsingShaders() {
         return this._internalAbstractMeshDataInfo._computeBonesUsingShaders;
@@ -50875,8 +51369,9 @@ class AbstractMesh extends TransformNode {
         return false;
     }
     /**
-     * Checks if the passed Ray intersects with the mesh
-     * @param ray defines the ray to use
+     * Checks if the passed Ray intersects with the mesh. A mesh triangle can be picked both from its front and back sides,
+     * irrespective of orientation.
+     * @param ray defines the ray to use. It should be in the mesh's LOCAL coordinate space.
      * @param fastCheck defines if fast mode (but less precise) must be used (false by default)
      * @param trianglePredicate defines an optional predicate used to select faces when a mesh intersection is detected
      * @param onlyBoundingInfo defines a boolean indicating if picking should only happen using bounding info (false by default)
@@ -50887,7 +51382,8 @@ class AbstractMesh extends TransformNode {
      */
     intersects(ray, fastCheck, trianglePredicate, onlyBoundingInfo = false, worldToUse, skipBoundingInfo = false) {
         const pickingInfo = new PickingInfo();
-        const intersectionThreshold = this.getClassName() === "InstancedLinesMesh" || this.getClassName() === "LinesMesh" ? this.intersectionThreshold : 0;
+        const className = this.getClassName();
+        const intersectionThreshold = className === "InstancedLinesMesh" || className === "LinesMesh" || className === "GreasedLineMesh" ? this.intersectionThreshold : 0;
         const boundingInfo = this.getBoundingInfo();
         if (!this.subMeshes) {
             return pickingInfo;
@@ -51773,14 +52269,16 @@ class MaterialHelper {
      * @param fogEnabled defines if fog has to be turned on
      * @param alphaTest defines if alpha testing has to be turned on
      * @param defines defines the current list of defines
+     * @param applyDecalAfterDetail Defines if the decal is applied after or before the detail
      */
-    static PrepareDefinesForMisc(mesh, scene, useLogarithmicDepth, pointsCloud, fogEnabled, alphaTest, defines) {
+    static PrepareDefinesForMisc(mesh, scene, useLogarithmicDepth, pointsCloud, fogEnabled, alphaTest, defines, applyDecalAfterDetail = false) {
         if (defines._areMiscDirty) {
             defines["LOGARITHMICDEPTH"] = useLogarithmicDepth;
             defines["POINTSIZE"] = pointsCloud;
             defines["FOG"] = fogEnabled && this.GetFogState(mesh, scene);
             defines["NONUNIFORMSCALING"] = mesh.nonUniformScaling;
             defines["ALPHATEST"] = alphaTest;
+            defines["DECAL_AFTER_DETAIL"] = applyDecalAfterDetail;
         }
     }
     /**
@@ -52730,7 +53228,7 @@ class Material {
         this._alpha = value;
         // Only call dirty when there is a state change (no alpha / alpha)
         if (oldValue === 1 || value === 1) {
-            this.markAsDirty(Material.MiscDirtyFlag);
+            this.markAsDirty(Material.MiscDirtyFlag + Material.PrePassDirtyFlag);
         }
     }
     /**
@@ -53580,6 +54078,19 @@ class Material {
     clone(name) {
         return null;
     }
+    _clonePlugins(targetMaterial, rootUrl) {
+        const serializationObject = {};
+        // Create plugins in targetMaterial in case they don't exist
+        this._serializePlugins(serializationObject);
+        Material._parsePlugins(serializationObject, targetMaterial, this._scene, rootUrl);
+        // Copy the properties of the current plugins to the cloned material's plugins
+        if (this.pluginManager) {
+            for (const plugin of this.pluginManager._plugins) {
+                const targetPlugin = targetMaterial.pluginManager.getPlugin(plugin.name);
+                plugin.copyTo(targetPlugin);
+            }
+        }
+    }
     /**
      * Gets the meshes bound to the material
      * @returns an array of meshes bound to the material
@@ -53608,11 +54119,7 @@ class Material {
      * @param onError defines a function to execute if the material fails compiling
      */
     forceCompilation(mesh, onCompiled, options, onError) {
-        const localOptions = {
-            clipPlane: false,
-            useInstances: false,
-            ...options,
-        };
+        const localOptions = Object.assign({ clipPlane: false, useInstances: false }, options);
         const scene = this.getScene();
         const currentHotSwapingState = this.allowShaderHotSwapping;
         this.allowShaderHotSwapping = false; // Turned off to let us evaluate the real compilation state
@@ -53954,7 +54461,16 @@ class Material {
         const serializationObject = SerializationHelper.Serialize(this);
         serializationObject.stencil = this.stencil.serialize();
         serializationObject.uniqueId = this.uniqueId;
+        this._serializePlugins(serializationObject);
         return serializationObject;
+    }
+    _serializePlugins(serializationObject) {
+        serializationObject.plugins = {};
+        if (this.pluginManager) {
+            for (const plugin of this.pluginManager._plugins) {
+                serializationObject.plugins[plugin.getClassName()] = plugin.serialize();
+            }
+        }
     }
     /**
      * Creates a material from parsed material data
@@ -53978,6 +54494,23 @@ class Material {
         const material = materialType.Parse(parsedMaterial, scene, rootUrl);
         material._loadedUniqueId = parsedMaterial.uniqueId;
         return material;
+    }
+    static _parsePlugins(serializationObject, material, scene, rootUrl) {
+        var _a;
+        if (!serializationObject.plugins) {
+            return;
+        }
+        for (const pluginClassName in serializationObject.plugins) {
+            const pluginData = serializationObject.plugins[pluginClassName];
+            let plugin = (_a = material.pluginManager) === null || _a === void 0 ? void 0 : _a.getPlugin(pluginData.name);
+            if (!plugin) {
+                const pluginClassType = Tools.Instantiate("BABYLON." + pluginClassName);
+                if (pluginClassType) {
+                    plugin = new pluginClassType(material);
+                }
+            }
+            plugin === null || plugin === void 0 ? void 0 : plugin.parse(pluginData, scene, rootUrl);
+        }
     }
 }
 /**
@@ -54083,11 +54616,6 @@ Material.MATERIAL_NORMALBLENDMETHOD_RNM = 1;
  * Event observable which raises global events common to all materials (like MaterialPluginEvent.Created)
  */
 Material.OnEventObservable = new Observable();
-(() => {
-    EngineStore.OnEnginesDisposedObservable.addOnce(() => {
-        Material.OnEventObservable.clear();
-    });
-})();
 Material._AllDirtyCallBack = (defines) => defines.markAllAsDirty();
 Material._ImageProcessingDirtyCallBack = (defines) => defines.markAsImageProcessingDirty();
 Material._TextureDirtyCallBack = (defines) => defines.markAsTexturesDirty();
@@ -54222,7 +54750,7 @@ class MultiMaterial extends Material {
         super(name, scene, true);
         /** @internal */
         this._waitingSubMaterialsUniqueIds = [];
-        this.getScene().multiMaterials.push(this);
+        this.getScene().addMultiMaterial(this);
         this.subMaterials = new Array();
         this._storeEffectOnSubMeshes = true; // multimaterial is considered like a push material
     }
@@ -54718,6 +55246,9 @@ class Mesh extends AbstractMesh {
         this.overrideMaterialSideOrientation = null;
         /**
          * Gets or sets a boolean indicating whether to render ignoring the active camera's max z setting. (false by default)
+         * You should not mix meshes that have this property set to true with meshes that have it set to false if they all write
+         * to the depth buffer, because the z-values are not comparable in the two cases and you will get rendering artifacts if you do.
+         * You can set the property to true for meshes that do not write to the depth buffer, or set the same value (either false or true) otherwise.
          * Note this will reduce performance when set to true.
          */
         this.ignoreCameraMaxZ = false;
@@ -54775,6 +55306,8 @@ class Mesh extends AbstractMesh {
                 "hasThinInstances",
                 "cloneMeshMap",
                 "hasBoundingInfo",
+                "physicsBody",
+                "physicsImpostor",
             ], ["_poseMatrix"]);
             // Source mesh
             this._internalMeshDataInfo._source = source;
@@ -54916,7 +55449,7 @@ class Mesh extends AbstractMesh {
             if (child.getClassName() === "InstancedMesh" && instance.getClassName() === "Mesh" && child.sourceMesh === this) {
                 child.instantiateHierarchy(instance, {
                     doNotInstantiate: (options && options.doNotInstantiate) || false,
-                    newSourcedMesh: instance
+                    newSourcedMesh: instance,
                 }, onNewNodeCreated);
             }
             else {
@@ -55304,7 +55837,7 @@ class Mesh extends AbstractMesh {
      * @returns true if all associated assets are ready (material, textures, shaders)
      */
     isReady(completeCheck = false, forceInstanceSupport = false) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         if (this.delayLoadState === 2) {
             return false;
         }
@@ -55357,13 +55890,15 @@ class Mesh extends AbstractMesh {
             for (let key = iterator.next(); key.done !== true; key = iterator.next()) {
                 const generator = key.value;
                 if (generator && (!((_a = generator.getShadowMap()) === null || _a === void 0 ? void 0 : _a.renderList) || (((_b = generator.getShadowMap()) === null || _b === void 0 ? void 0 : _b.renderList) && ((_d = (_c = generator.getShadowMap()) === null || _c === void 0 ? void 0 : _c.renderList) === null || _d === void 0 ? void 0 : _d.indexOf(this)) !== -1))) {
-                    if (generator.getShadowMap()) {
-                        engine.currentRenderPassId = generator.getShadowMap().renderPassId;
-                    }
-                    for (const subMesh of this.subMeshes) {
-                        if (!generator.isReady(subMesh, hardwareInstancedRendering, (_f = (_e = subMesh.getMaterial()) === null || _e === void 0 ? void 0 : _e.needAlphaBlendingForMesh(this)) !== null && _f !== void 0 ? _f : false)) {
-                            engine.currentRenderPassId = currentRenderPassId;
-                            return false;
+                    const shadowMap = generator.getShadowMap();
+                    const renderPassIds = (_e = shadowMap.renderPassIds) !== null && _e !== void 0 ? _e : [engine.currentRenderPassId];
+                    for (let p = 0; p < renderPassIds.length; ++p) {
+                        engine.currentRenderPassId = renderPassIds[p];
+                        for (const subMesh of this.subMeshes) {
+                            if (!generator.isReady(subMesh, hardwareInstancedRendering, (_g = (_f = subMesh.getMaterial()) === null || _f === void 0 ? void 0 : _f.needAlphaBlendingForMesh(this)) !== null && _g !== void 0 ? _g : false)) {
+                                engine.currentRenderPassId = currentRenderPassId;
+                                return false;
+                            }
                         }
                     }
                     engine.currentRenderPassId = currentRenderPassId;
@@ -55434,7 +55969,7 @@ class Mesh extends AbstractMesh {
         if (!this._instanceDataStorage.visibleInstances) {
             this._instanceDataStorage.visibleInstances = {
                 defaultRenderId: renderId,
-                selfDefaultRenderId: this._renderId
+                selfDefaultRenderId: this._renderId,
             };
         }
         if (!this._instanceDataStorage.visibleInstances[renderId]) {
@@ -55536,9 +56071,10 @@ class Mesh extends AbstractMesh {
             if (offset >= totalIndices) {
                 break;
             }
-            SubMesh.CreateFromIndices(0, offset, index === count - 1 ? totalIndices - offset : subdivisionSize, this);
+            SubMesh.CreateFromIndices(0, offset, index === count - 1 ? totalIndices - offset : subdivisionSize, this, undefined, false);
             offset += subdivisionSize;
         }
+        this.refreshBoundingInfo();
         this.synchronizeInstances();
     }
     /**
@@ -55985,7 +56521,7 @@ class Mesh extends AbstractMesh {
                     vertexBuffers: {},
                     strides: {},
                     sizes: {},
-                    vertexArrayObjects: this.getEngine().getCaps().vertexArrayObject ? {} : undefined
+                    vertexArrayObjects: this.getEngine().getCaps().vertexArrayObject ? {} : undefined,
                 };
             }
             this._userInstancedBuffersStorage.vertexBuffers["world0"] = instancesBuffer.createVertexBuffer("world0", 0, 4);
@@ -56835,77 +57371,17 @@ class Mesh extends AbstractMesh {
         }
         return this;
     }
-    /**
-     * Modify the mesh to get a flat shading rendering.
-     * This means each mesh facet will then have its own normals. Usually new vertices are added in the mesh geometry to get this result.
-     * Warning : the mesh is really modified even if not set originally as updatable and, under the hood, a new VertexBuffer is allocated.
-     * @returns current mesh
-     */
-    convertToFlatShadedMesh() {
-        const kinds = this.getVerticesDataKinds();
-        const vbs = {};
-        const data = {};
-        const newdata = {};
-        let updatableNormals = false;
-        let kindIndex;
-        let kind;
-        for (kindIndex = 0; kindIndex < kinds.length; kindIndex++) {
-            kind = kinds[kindIndex];
-            const vertexBuffer = this.getVertexBuffer(kind);
-            // Check data consistency
-            const vertexData = vertexBuffer.getData();
-            if (vertexData instanceof Array || vertexData instanceof Float32Array) {
-                if (vertexData.length === 0) {
-                    continue;
-                }
-            }
-            if (kind === VertexBuffer.NormalKind) {
-                updatableNormals = vertexBuffer.isUpdatable();
-                kinds.splice(kindIndex, 1);
-                kindIndex--;
-                continue;
-            }
-            vbs[kind] = vertexBuffer;
-            data[kind] = this.getVerticesData(kind);
-            newdata[kind] = [];
-        }
-        // Save previous submeshes
-        const previousSubmeshes = this.subMeshes.slice(0);
-        const indices = this.getIndices();
-        const totalIndices = this.getTotalIndices();
-        // Generating unique vertices per face
-        let index;
-        for (index = 0; index < totalIndices; index++) {
-            const vertexIndex = indices[index];
-            for (kindIndex = 0; kindIndex < kinds.length; kindIndex++) {
-                kind = kinds[kindIndex];
-                if (!vbs[kind]) {
-                    continue;
-                }
-                const stride = vbs[kind].getStrideSize();
-                for (let offset = 0; offset < stride; offset++) {
-                    newdata[kind].push(data[kind][vertexIndex * stride + offset]);
-                }
-            }
-        }
-        // Updating faces & normal
-        const normals = [];
-        const positions = newdata[VertexBuffer.PositionKind];
-        const useRightHandedSystem = this.getScene().useRightHandedSystem;
-        let flipNormalGeneration;
-        if (useRightHandedSystem) {
-            flipNormalGeneration = this.overrideMaterialSideOrientation === 1;
-        }
-        else {
-            flipNormalGeneration = this.overrideMaterialSideOrientation === 0;
-        }
-        for (index = 0; index < totalIndices; index += 3) {
-            indices[index] = index;
-            indices[index + 1] = index + 1;
-            indices[index + 2] = index + 2;
-            const p1 = Vector3.FromArray(positions, index * 3);
-            const p2 = Vector3.FromArray(positions, (index + 1) * 3);
-            const p3 = Vector3.FromArray(positions, (index + 2) * 3);
+    _getFlattenedNormals(indices, positions) {
+        const normals = new Float32Array(indices.length * 3);
+        let normalsCount = 0;
+        // Decide if normals should be flipped
+        const flipNormalGeneration = this.overrideMaterialSideOrientation ===
+            (this._scene.useRightHandedSystem ? 1 : 0);
+        // Generate new normals
+        for (let index = 0; index < indices.length; index += 3) {
+            const p1 = Vector3.FromArray(positions, indices[index] * 3);
+            const p2 = Vector3.FromArray(positions, indices[index + 1] * 3);
+            const p3 = Vector3.FromArray(positions, indices[index + 2] * 3);
             const p1p2 = p1.subtract(p2);
             const p3p2 = p3.subtract(p2);
             const normal = Vector3.Normalize(Vector3.Cross(p1p2, p3p2));
@@ -56914,29 +57390,88 @@ class Mesh extends AbstractMesh {
             }
             // Store same normals for every vertex
             for (let localIndex = 0; localIndex < 3; localIndex++) {
-                normals.push(normal.x);
-                normals.push(normal.y);
-                normals.push(normal.z);
+                normals[normalsCount++] = normal.x;
+                normals[normalsCount++] = normal.y;
+                normals[normalsCount++] = normal.z;
             }
+        }
+        return normals;
+    }
+    _convertToUnIndexedMesh(flattenNormals = false) {
+        const kinds = this.getVerticesDataKinds();
+        const indices = this.getIndices();
+        const data = {};
+        const separateVertices = (data, stride) => {
+            const newData = new Float32Array(indices.length * stride);
+            let count = 0;
+            for (let index = 0; index < indices.length; index++) {
+                for (let offset = 0; offset < stride; offset++) {
+                    newData[count++] = data[indices[index] * stride + offset];
+                }
+            }
+            return newData;
+        };
+        // Save previous submeshes
+        const previousSubmeshes = this.geometry ? this.subMeshes.slice(0) : [];
+        // Cache vertex data
+        for (const kind of kinds) {
+            data[kind] = this.getVerticesData(kind);
+        }
+        // Update vertex data
+        for (const kind of kinds) {
+            const vertexBuffer = this.getVertexBuffer(kind);
+            const stride = vertexBuffer.getStrideSize();
+            if (flattenNormals && kind === VertexBuffer.NormalKind) {
+                const normals = this._getFlattenedNormals(indices, data[VertexBuffer.PositionKind]);
+                this.setVerticesData(VertexBuffer.NormalKind, normals, vertexBuffer.isUpdatable(), stride);
+            }
+            else {
+                this.setVerticesData(kind, separateVertices(data[kind], stride), vertexBuffer.isUpdatable(), stride);
+            }
+        }
+        // Update morph targets
+        if (this.morphTargetManager) {
+            for (let targetIndex = 0; targetIndex < this.morphTargetManager.numTargets; targetIndex++) {
+                const target = this.morphTargetManager.getTarget(targetIndex);
+                const positions = target.getPositions();
+                target.setPositions(separateVertices(positions, 3));
+                const normals = target.getNormals();
+                if (normals) {
+                    target.setNormals(flattenNormals ? this._getFlattenedNormals(indices, positions) : separateVertices(normals, 3));
+                }
+                const tangents = target.getTangents();
+                if (tangents) {
+                    target.setTangents(separateVertices(tangents, 3));
+                }
+                const uvs = target.getUVs();
+                if (uvs) {
+                    target.setUVs(separateVertices(uvs, 2));
+                }
+            }
+            this.morphTargetManager.synchronize();
+        }
+        // Update indices
+        for (let index = 0; index < indices.length; index++) {
+            indices[index] = index;
         }
         this.setIndices(indices);
-        this.setVerticesData(VertexBuffer.NormalKind, normals, updatableNormals);
-        // Updating vertex buffers
-        for (kindIndex = 0; kindIndex < kinds.length; kindIndex++) {
-            kind = kinds[kindIndex];
-            if (!newdata[kind]) {
-                continue;
-            }
-            this.setVerticesData(kind, newdata[kind], vbs[kind].isUpdatable());
-        }
-        // Updating submeshes
+        this._unIndexed = true;
+        // Update submeshes
         this.releaseSubMeshes();
-        for (let submeshIndex = 0; submeshIndex < previousSubmeshes.length; submeshIndex++) {
-            const previousOne = previousSubmeshes[submeshIndex];
+        for (const previousOne of previousSubmeshes) {
             SubMesh.AddToMesh(previousOne.materialIndex, previousOne.indexStart, previousOne.indexCount, previousOne.indexStart, previousOne.indexCount, this);
         }
         this.synchronizeInstances();
         return this;
+    }
+    /**
+     * Modify the mesh to get a flat shading rendering.
+     * This means each mesh facet will then have its own normals. Usually new vertices are added in the mesh geometry to get this result.
+     * Warning : the mesh is really modified even if not set originally as updatable and, under the hood, a new VertexBuffer is allocated.
+     * @returns current mesh
+     */
+    convertToFlatShadedMesh() {
+        return this._convertToUnIndexedMesh(true);
     }
     /**
      * This method removes all the mesh indices and add new vertices (duplication) in order to unfold facets into buffers.
@@ -56945,56 +57480,7 @@ class Mesh extends AbstractMesh {
      * @returns current mesh
      */
     convertToUnIndexedMesh() {
-        const kinds = this.getVerticesDataKinds();
-        const vbs = {};
-        const data = {};
-        const newdata = {};
-        let kindIndex;
-        let kind;
-        for (kindIndex = 0; kindIndex < kinds.length; kindIndex++) {
-            kind = kinds[kindIndex];
-            const vertexBuffer = this.getVertexBuffer(kind);
-            vbs[kind] = vertexBuffer;
-            data[kind] = vbs[kind].getData();
-            newdata[kind] = [];
-        }
-        // Save previous submeshes
-        const previousSubmeshes = this.subMeshes.slice(0);
-        const indices = this.getIndices();
-        const totalIndices = this.getTotalIndices();
-        // Generating unique vertices per face
-        let index;
-        for (index = 0; index < totalIndices; index++) {
-            const vertexIndex = indices[index];
-            for (kindIndex = 0; kindIndex < kinds.length; kindIndex++) {
-                kind = kinds[kindIndex];
-                const stride = vbs[kind].getStrideSize();
-                for (let offset = 0; offset < stride; offset++) {
-                    newdata[kind].push(data[kind][vertexIndex * stride + offset]);
-                }
-            }
-        }
-        // Updating indices
-        for (index = 0; index < totalIndices; index += 3) {
-            indices[index] = index;
-            indices[index + 1] = index + 1;
-            indices[index + 2] = index + 2;
-        }
-        this.setIndices(indices);
-        // Updating vertex buffers
-        for (kindIndex = 0; kindIndex < kinds.length; kindIndex++) {
-            kind = kinds[kindIndex];
-            this.setVerticesData(kind, newdata[kind], vbs[kind].isUpdatable(), vbs[kind].getStrideSize());
-        }
-        // Updating submeshes
-        this.releaseSubMeshes();
-        for (let submeshIndex = 0; submeshIndex < previousSubmeshes.length; submeshIndex++) {
-            const previousOne = previousSubmeshes[submeshIndex];
-            SubMesh.AddToMesh(previousOne.materialIndex, previousOne.indexStart, previousOne.indexCount, previousOne.indexStart, previousOne.indexCount, this);
-        }
-        this._unIndexed = true;
-        this.synchronizeInstances();
-        return this;
+        return this._convertToUnIndexedMesh();
     }
     /**
      * Inverses facet orientations.
@@ -57433,7 +57919,7 @@ class Mesh extends AbstractMesh {
                     verticesStart: subMesh.verticesStart,
                     verticesCount: subMesh.verticesCount,
                     indexStart: subMesh.indexStart,
-                    indexCount: subMesh.indexCount
+                    indexCount: subMesh.indexCount,
                 });
             }
         }
@@ -57488,7 +57974,7 @@ class Mesh extends AbstractMesh {
                 isPickable: instance.isPickable,
                 checkCollisions: instance.checkCollisions,
                 position: instance.position.asArray(),
-                scaling: instance.scaling.asArray()
+                scaling: instance.scaling.asArray(),
             };
             if (instance.parent) {
                 instance.parent._serializeAsParent(serializationInstance);
@@ -57529,13 +58015,13 @@ class Mesh extends AbstractMesh {
                 instancesCount: this._thinInstanceDataStorage.instancesCount,
                 matrixData: Array.from(this._thinInstanceDataStorage.matrixData),
                 matrixBufferSize: this._thinInstanceDataStorage.matrixBufferSize,
-                enablePicking: this.thinInstanceEnablePicking
+                enablePicking: this.thinInstanceEnablePicking,
             };
             if (this._userThinInstanceBuffersStorage) {
                 const userThinInstance = {
                     data: {},
                     sizes: {},
-                    strides: {}
+                    strides: {},
                 };
                 for (const kind in this._userThinInstanceBuffersStorage.data) {
                     userThinInstance.data[kind] = Array.from(this._userThinInstanceBuffersStorage.data[kind]);
@@ -57638,6 +58124,9 @@ class Mesh extends AbstractMesh {
         }
         else if (parsedMesh.type && parsedMesh.type === "GoldbergMesh") {
             mesh = Mesh._GoldbergMeshParser(parsedMesh, scene);
+        }
+        else if (parsedMesh.type && parsedMesh.type === "GreasedLineMesh") {
+            mesh = Mesh._GreasedLineMeshParser(parsedMesh, scene);
         }
         else {
             mesh = new Mesh(parsedMesh.name, scene);
@@ -57810,7 +58299,7 @@ class Mesh extends AbstractMesh {
             mesh._waitingData.lods = {
                 ids: parsedMesh.lodMeshIds,
                 distances: parsedMesh.lodDistances ? parsedMesh.lodDistances : null,
-                coverages: parsedMesh.lodCoverages ? parsedMesh.lodCoverages : null
+                coverages: parsedMesh.lodCoverages ? parsedMesh.lodCoverages : null,
             };
         }
         // Instances
@@ -58073,12 +58562,12 @@ class Mesh extends AbstractMesh {
         if (!minVector || !maxVector) {
             return {
                 min: Vector3.Zero(),
-                max: Vector3.Zero()
+                max: Vector3.Zero(),
             };
         }
         return {
             min: minVector,
-            max: maxVector
+            max: maxVector,
         };
     }
     /**
@@ -58300,6 +58789,431 @@ class Mesh extends AbstractMesh {
             return Material.WireFrameFillMode;
         return (_a = this.overrideRenderingFillMode) !== null && _a !== void 0 ? _a : fillMode;
     }
+    // deprecated methods
+    /**
+     * Sets the mesh material by the material or multiMaterial `id` property
+     * @param id is a string identifying the material or the multiMaterial
+     * @returns the current mesh
+     * @deprecated Please use MeshBuilder instead Please use setMaterialById instead
+     */
+    setMaterialByID(id) {
+        return this.setMaterialById(id);
+    }
+    /**
+     * Creates a ribbon mesh.
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param
+     * @param name defines the name of the mesh to create
+     * @param pathArray is a required array of paths, what are each an array of successive Vector3. The pathArray parameter depicts the ribbon geometry.
+     * @param closeArray creates a seam between the first and the last paths of the path array (default is false)
+     * @param closePath creates a seam between the first and the last points of each path of the path array
+     * @param offset is taken in account only if the `pathArray` is containing a single path
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @param instance defines an instance of an existing Ribbon object to be updated with the passed `pathArray` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#ribbon)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateRibbon(name, pathArray, closeArray, closePath, offset, scene, updatable, sideOrientation, instance) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a plane polygonal mesh.  By default, this is a disc.
+     * @param name defines the name of the mesh to create
+     * @param radius sets the radius size (float) of the polygon (default 0.5)
+     * @param tessellation sets the number of polygon sides (positive integer, default 64). So a tessellation valued to 3 will build a triangle, to 4 a square, etc
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateDisc(name, radius, tessellation, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a box mesh.
+     * @param name defines the name of the mesh to create
+     * @param size sets the size (float) of each box side (default 1)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateBox(name, size, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a sphere mesh.
+     * @param name defines the name of the mesh to create
+     * @param segments sets the sphere number of horizontal stripes (positive integer, default 32)
+     * @param diameter sets the diameter size (float) of the sphere (default 1)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateSphere(name, segments, diameter, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a hemisphere mesh.
+     * @param name defines the name of the mesh to create
+     * @param segments sets the sphere number of horizontal stripes (positive integer, default 32)
+     * @param diameter sets the diameter size (float) of the sphere (default 1)
+     * @param scene defines the hosting scene
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateHemisphere(name, segments, diameter, scene) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a cylinder or a cone mesh.
+     * @param name defines the name of the mesh to create
+     * @param height sets the height size (float) of the cylinder/cone (float, default 2)
+     * @param diameterTop set the top cap diameter (floats, default 1)
+     * @param diameterBottom set the bottom cap diameter (floats, default 1). This value can't be zero
+     * @param tessellation sets the number of cylinder sides (positive integer, default 24). Set it to 3 to get a prism for instance
+     * @param subdivisions sets the number of rings along the cylinder height (positive integer, default 1)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateCylinder(name, height, diameterTop, diameterBottom, tessellation, subdivisions, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    // Torus  (Code from SharpDX.org)
+    /**
+     * Creates a torus mesh.
+     * @param name defines the name of the mesh to create
+     * @param diameter sets the diameter size (float) of the torus (default 1)
+     * @param thickness sets the diameter size of the tube of the torus (float, default 0.5)
+     * @param tessellation sets the number of torus sides (positive integer, default 16)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateTorus(name, diameter, thickness, tessellation, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a torus knot mesh.
+     * @param name defines the name of the mesh to create
+     * @param radius sets the global radius size (float) of the torus knot (default 2)
+     * @param tube sets the diameter size of the tube of the torus (float, default 0.5)
+     * @param radialSegments sets the number of sides on each tube segments (positive integer, default 32)
+     * @param tubularSegments sets the number of tubes to decompose the knot into (positive integer, default 32)
+     * @param p the number of windings on X axis (positive integers, default 2)
+     * @param q the number of windings on Y axis (positive integers, default 3)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateTorusKnot(name, radius, tube, radialSegments, tubularSegments, p, q, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a line mesh..
+     * @param name defines the name of the mesh to create
+     * @param points is an array successive Vector3
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param instance is an instance of an existing LineMesh object to be updated with the passed `points` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#lines-and-dashedlines).
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateLines(name, points, scene, updatable, instance) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a dashed line mesh.
+     * @param name defines the name of the mesh to create
+     * @param points is an array successive Vector3
+     * @param dashSize is the size of the dashes relatively the dash number (positive float, default 3)
+     * @param gapSize is the size of the gap between two successive dashes relatively the dash number (positive float, default 1)
+     * @param dashNb is the intended total number of dashes (positive integer, default 200)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param instance is an instance of an existing LineMesh object to be updated with the passed `points` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#lines-and-dashedlines)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateDashedLines(name, points, dashSize, gapSize, dashNb, scene, updatable, instance) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a polygon mesh.Please consider using the same method from the MeshBuilder class instead
+     * The polygon's shape will depend on the input parameters and is constructed parallel to a ground mesh.
+     * The parameter `shape` is a required array of successive Vector3 representing the corners of the polygon in th XoZ plane, that is y = 0 for all vectors.
+     * You can set the mesh side orientation with the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
+     * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created.
+     * Remember you can only change the shape positions, not their number when updating a polygon.
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param#non-regular-polygon
+     * @param name defines the name of the mesh to create
+     * @param shape is a required array of successive Vector3 representing the corners of the polygon in th XoZ plane, that is y = 0 for all vectors
+     * @param scene defines the hosting scene
+     * @param holes is a required array of arrays of successive Vector3 used to defines holes in the polygon
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @param earcutInjection can be used to inject your own earcut reference
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreatePolygon(name, shape, scene, holes, updatable, sideOrientation, earcutInjection) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates an extruded polygon mesh, with depth in the Y direction..
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param#extruded-non-regular-polygon
+     * @param name defines the name of the mesh to create
+     * @param shape is a required array of successive Vector3 representing the corners of the polygon in th XoZ plane, that is y = 0 for all vectors
+     * @param depth defines the height of extrusion
+     * @param scene defines the hosting scene
+     * @param holes is a required array of arrays of successive Vector3 used to defines holes in the polygon
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @param earcutInjection can be used to inject your own earcut reference
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static ExtrudePolygon(name, shape, depth, scene, holes, updatable, sideOrientation, earcutInjection) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates an extruded shape mesh.
+     * The extrusion is a parametric shape. It has no predefined shape. Its final shape will depend on the input parameters.
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param#extruded-shapes
+     * @param name defines the name of the mesh to create
+     * @param shape is a required array of successive Vector3. This array depicts the shape to be extruded in its local space : the shape must be designed in the xOy plane and will be extruded along the Z axis
+     * @param path is a required array of successive Vector3. This is the axis curve the shape is extruded along
+     * @param scale is the value to scale the shape
+     * @param rotation is the angle value to rotate the shape each step (each path point), from the former step (so rotation added each step) along the curve
+     * @param cap sets the way the extruded shape is capped. Possible values : Mesh.NO_CAP (default), Mesh.CAP_START, Mesh.CAP_END, Mesh.CAP_ALL
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @param instance is an instance of an existing ExtrudedShape object to be updated with the passed `shape`, `path`, `scale` or `rotation` parameters (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#extruded-shape)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static ExtrudeShape(name, shape, path, scale, rotation, cap, scene, updatable, sideOrientation, instance) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates an custom extruded shape mesh.
+     * The custom extrusion is a parametric shape.
+     * It has no predefined shape. Its final shape will depend on the input parameters.
+     *
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param#extruded-shapes
+     * @param name defines the name of the mesh to create
+     * @param shape is a required array of successive Vector3. This array depicts the shape to be extruded in its local space : the shape must be designed in the xOy plane and will be extruded along the Z axis
+     * @param path is a required array of successive Vector3. This is the axis curve the shape is extruded along
+     * @param scaleFunction is a custom Javascript function called on each path point
+     * @param rotationFunction is a custom Javascript function called on each path point
+     * @param ribbonCloseArray forces the extrusion underlying ribbon to close all the paths in its `pathArray`
+     * @param ribbonClosePath forces the extrusion underlying ribbon to close its `pathArray`
+     * @param cap sets the way the extruded shape is capped. Possible values : Mesh.NO_CAP (default), Mesh.CAP_START, Mesh.CAP_END, Mesh.CAP_ALL
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @param instance is an instance of an existing ExtrudedShape object to be updated with the passed `shape`, `path`, `scale` or `rotation` parameters (https://doc.babylonjs.com/features/featuresDeepDive/mesh/dynamicMeshMorph#extruded-shape)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static ExtrudeShapeCustom(name, shape, path, scaleFunction, rotationFunction, ribbonCloseArray, ribbonClosePath, cap, scene, updatable, sideOrientation, instance) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates lathe mesh.
+     * The lathe is a shape with a symmetry axis : a 2D model shape is rotated around this axis to design the lathe.
+     * @param name defines the name of the mesh to create
+     * @param shape is a required array of successive Vector3. This array depicts the shape to be rotated in its local space : the shape must be designed in the xOy plane and will be rotated around the Y axis. It's usually a 2D shape, so the Vector3 z coordinates are often set to zero
+     * @param radius is the radius value of the lathe
+     * @param tessellation is the side number of the lathe.
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateLathe(name, shape, radius, tessellation, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a plane mesh.
+     * @param name defines the name of the mesh to create
+     * @param size sets the size (float) of both sides of the plane at once (default 1)
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreatePlane(name, size, scene, updatable, sideOrientation) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a ground mesh.
+     * @param name defines the name of the mesh to create
+     * @param width set the width of the ground
+     * @param height set the height of the ground
+     * @param subdivisions sets the number of subdivisions per side
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateGround(name, width, height, subdivisions, scene, updatable) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a tiled ground mesh.
+     * @param name defines the name of the mesh to create
+     * @param xmin set the ground minimum X coordinate
+     * @param zmin set the ground minimum Y coordinate
+     * @param xmax set the ground maximum X coordinate
+     * @param zmax set the ground maximum Z coordinate
+     * @param subdivisions is an object `{w: positive integer, h: positive integer}` (default `{w: 6, h: 6}`). `w` and `h` are the numbers of subdivisions on the ground width and height. Each subdivision is called a tile
+     * @param precision is an object `{w: positive integer, h: positive integer}` (default `{w: 2, h: 2}`). `w` and `h` are the numbers of subdivisions on the ground width and height of each tile
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateTiledGround(name, xmin, zmin, xmax, zmax, subdivisions, precision, scene, updatable) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a ground mesh from a height map.
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set/height_map
+     * @param name defines the name of the mesh to create
+     * @param url sets the URL of the height map image resource
+     * @param width set the ground width size
+     * @param height set the ground height size
+     * @param subdivisions sets the number of subdivision per side
+     * @param minHeight is the minimum altitude on the ground
+     * @param maxHeight is the maximum altitude on the ground
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param onReady  is a callback function that will be called  once the mesh is built (the height map download can last some time)
+     * @param alphaFilter will filter any data where the alpha channel is below this value, defaults 0 (all data visible)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateGroundFromHeightMap(name, url, width, height, subdivisions, minHeight, maxHeight, scene, updatable, onReady, alphaFilter) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a tube mesh.
+     * The tube is a parametric shape.
+     * It has no predefined shape. Its final shape will depend on the input parameters.
+     *
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/param
+     * @param name defines the name of the mesh to create
+     * @param path is a required array of successive Vector3. It is the curve used as the axis of the tube
+     * @param radius sets the tube radius size
+     * @param tessellation is the number of sides on the tubular surface
+     * @param radiusFunction is a custom function. If it is not null, it overrides the parameter `radius`. This function is called on each point of the tube path and is passed the index `i` of the i-th point and the distance of this point from the first point of the path
+     * @param cap sets the way the extruded shape is capped. Possible values : Mesh.NO_CAP (default), Mesh.CAP_START, Mesh.CAP_END, Mesh.CAP_ALL
+     * @param scene defines the hosting scene
+     * @param updatable defines if the mesh must be flagged as updatable
+     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation)
+     * @param instance is an instance of an existing Tube object to be updated with the passed `pathArray` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#tube)
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateTube(name, path, radius, tessellation, radiusFunction, cap, scene, updatable, sideOrientation, instance) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a polyhedron mesh.
+     *.
+     * * The parameter `type` (positive integer, max 14, default 0) sets the polyhedron type to build among the 15 embedded types. Please refer to the type sheet in the tutorial to choose the wanted type
+     * * The parameter `size` (positive float, default 1) sets the polygon size
+     * * You can overwrite the `size` on each dimension bu using the parameters `sizeX`, `sizeY` or `sizeZ` (positive floats, default to `size` value)
+     * * You can build other polyhedron types than the 15 embbeded ones by setting the parameter `custom` (`polyhedronObject`, default null). If you set the parameter `custom`, this overwrittes the parameter `type`
+     * * A `polyhedronObject` is a formatted javascript object. You'll find a full file with pre-set polyhedra here : https://github.com/BabylonJS/Extensions/tree/master/Polyhedron
+     * * You can set the color and the UV of each side of the polyhedron with the parameters `faceColors` (Color4, default `(1, 1, 1, 1)`) and faceUV (Vector4, default `(0, 0, 1, 1)`)
+     * * To understand how to set `faceUV` or `faceColors`, please read this by considering the right number of faces of your polyhedron, instead of only 6 for the box : https://doc.babylonjs.com/features/featuresDeepDive/materials/using/texturePerBoxFace
+     * * The parameter `flat` (boolean, default true). If set to false, it gives the polyhedron a single global face, so less vertices and shared normals. In this case, `faceColors` and `faceUV` are ignored
+     * * You can also set the mesh side orientation with the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
+     * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation
+     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+     * @param name defines the name of the mesh to create
+     * @param options defines the options used to create the mesh
+     * @param scene defines the hosting scene
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreatePolyhedron(name, options, scene) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a sphere based upon an icosahedron with 20 triangular faces which can be subdivided
+     * * The parameter `radius` sets the radius size (float) of the icosphere (default 1)
+     * * You can set some different icosphere dimensions, for instance to build an ellipsoid, by using the parameters `radiusX`, `radiusY` and `radiusZ` (all by default have the same value than `radius`)
+     * * The parameter `subdivisions` sets the number of subdivisions (positive integer, default 4). The more subdivisions, the more faces on the icosphere whatever its size
+     * * The parameter `flat` (boolean, default true) gives each side its own normals. Set it to false to get a smooth continuous light reflection on the surface
+     * * You can also set the mesh side orientation with the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
+     * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/set#side-orientation
+     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+     * @see https://doc.babylonjs.com/features/featuresDeepDive/mesh/creation/polyhedra#icosphere
+     * @param name defines the name of the mesh
+     * @param options defines the options used to create the mesh
+     * @param scene defines the hosting scene
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateIcoSphere(name, options, scene) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Creates a decal mesh.
+     *.
+     * A decal is a mesh usually applied as a model onto the surface of another mesh
+     * @param name  defines the name of the mesh
+     * @param sourceMesh defines the mesh receiving the decal
+     * @param position sets the position of the decal in world coordinates
+     * @param normal sets the normal of the mesh where the decal is applied onto in world coordinates
+     * @param size sets the decal scaling
+     * @param angle sets the angle to rotate the decal
+     * @returns a new Mesh
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateDecal(name, sourceMesh, position, normal, size, angle) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /** Creates a Capsule Mesh
+     * @param name defines the name of the mesh.
+     * @param options the constructors options used to shape the mesh.
+     * @param scene defines the scene the mesh is scoped to.
+     * @returns the capsule mesh
+     * @see https://doc.babylonjs.com/how_to/capsule_shape
+     * @deprecated Please use MeshBuilder instead
+     */
+    static CreateCapsule(name, options, scene) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
+    /**
+     * Extends a mesh to a Goldberg mesh
+     * Warning  the mesh to convert MUST be an import of a perviously exported Goldberg mesh
+     * @param mesh the mesh to convert
+     * @returns the extended mesh
+     * @deprecated Please use ExtendMeshToGoldberg instead
+     */
+    static ExtendToGoldberg(mesh) {
+        throw new Error("Import MeshBuilder to populate this function");
+    }
 }
 // Consts
 /**
@@ -58408,93 +59322,14 @@ Mesh._GoldbergMeshParser = (parsedMesh, scene) => {
 Mesh._LinesMeshParser = (parsedMesh, scene) => {
     throw _WarnImport("LinesMesh");
 };
-RegisterClass("BABYLON.Mesh", Mesh);
 /**
  * @internal
  */
-Mesh.prototype.setMaterialByID = function (id) {
-    return this.setMaterialById(id);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+Mesh._GreasedLineMeshParser = (parsedMesh, scene) => {
+    throw _WarnImport("GreasedLineMesh");
 };
-Mesh.CreateDisc =
-    Mesh.CreateDisc ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateBox =
-    Mesh.CreateBox ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateSphere =
-    Mesh.CreateSphere ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateCylinder =
-    Mesh.CreateCylinder ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateTorusKnot =
-    Mesh.CreateTorusKnot ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateTorus =
-    Mesh.CreateTorus ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreatePlane =
-    Mesh.CreatePlane ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateGround =
-    Mesh.CreateGround ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateTiledGround =
-    Mesh.CreateTiledGround ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateGroundFromHeightMap =
-    Mesh.CreateGroundFromHeightMap ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateTube =
-    Mesh.CreateTube ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreatePolyhedron =
-    Mesh.CreatePolyhedron ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateIcoSphere =
-    Mesh.CreateIcoSphere ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateDecal =
-    Mesh.CreateDecal ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.CreateCapsule =
-    Mesh.CreateCapsule ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
-Mesh.ExtendToGoldberg =
-    Mesh.ExtendToGoldberg ||
-        (() => {
-            throw new Error("Import MeshBuilder to populate this function");
-        });
+RegisterClass("BABYLON.Mesh", Mesh);
 
 /**
  * Creates the VertexData of the Disc or regular Polygon
@@ -61440,6 +62275,14 @@ class BaseTexture extends ThinTexture {
         return Matrix.IdentityReadOnly;
     }
     /**
+     * Gets a suitable rotate/transform matrix when the texture is used for refraction.
+     * There's a separate function from getReflectionTextureMatrix because refraction requires a special configuration of the matrix in right-handed mode.
+     * @returns The refraction matrix
+     */
+    getRefractionTextureMatrix() {
+        return this.getReflectionTextureMatrix();
+    }
+    /**
      * Get if the texture is ready to be consumed (either it is ready or it is not blocking)
      * @returns true if ready, not blocking or if there was an error loading the texture
      */
@@ -62553,7 +63396,7 @@ class Texture extends BaseTexture {
                 }
                 else {
                     let url;
-                    if (parsedTexture.name && parsedTexture.name.indexOf("://") > 0) {
+                    if (parsedTexture.name && (parsedTexture.name.indexOf("://") > 0 || parsedTexture.name.startsWith("data:"))) {
                         url = parsedTexture.name;
                     }
                     else {
@@ -62767,6 +63610,7 @@ class MaterialPluginManager {
      * @param material material that this manager will manage the plugins for
      */
     constructor(material) {
+        /** @internal */
         this._plugins = [];
         this._activePlugins = [];
         this._activePluginsForExtraEvents = [];
@@ -62780,7 +63624,7 @@ class MaterialPluginManager {
     _addPlugin(plugin) {
         for (let i = 0; i < this._plugins.length; ++i) {
             if (this._plugins[i].name === plugin.name) {
-                throw `Plugin "${plugin.name}" already added to the material "${this._material.name}"!`;
+                return false;
             }
         }
         if (this._material._uniformBufferLayoutBuilt) {
@@ -62805,6 +63649,7 @@ class MaterialPluginManager {
             this._collectPointNames("fragment", plugin.getCustomCode("fragment"));
         }
         this._defineNamesFromPlugins = defineNamesFromPlugins;
+        return true;
     }
     /**
      * @internal
@@ -63060,6 +63905,22 @@ class MaterialPluginManager {
 /** Map a plugin class name to a #define name (used in the vertex/fragment shaders as a marker of the plugin usage) */
 MaterialPluginManager._MaterialPluginClassToMainDefine = {};
 MaterialPluginManager._MaterialPluginCounter = 0;
+(() => {
+    EngineStore.OnEnginesDisposedObservable.add(() => {
+        UnregisterAllMaterialPlugins();
+    });
+})();
+const plugins = [];
+let observer = null;
+/**
+ * Clear the list of global material plugins
+ */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+function UnregisterAllMaterialPlugins() {
+    plugins.length = 0;
+    Material.OnEventObservable.remove(observer);
+    observer = null;
+}
 
 /**
  * Base class for material plugins.
@@ -63277,14 +64138,14 @@ class MaterialPluginBase {
         SerializationHelper.Clone(() => plugin, this);
     }
     /**
-     * Serializes this clear coat configuration.
+     * Serializes this plugin configuration.
      * @returns - An object with the serialized config.
      */
     serialize() {
         return SerializationHelper.Serialize(this);
     }
     /**
-     * Parses a anisotropy Configuration from a serialized object.
+     * Parses a plugin configuration from a serialized object.
      * @param source - Serialized object.
      * @param scene Defines the scene we are parsing for
      * @param rootUrl Defines the rootUrl to load from
@@ -63492,6 +64353,7 @@ ThinEngine.prototype.createRawCubeTextureFromUrl = function (url, scene, size, f
     const texture = this.createRawCubeTexture(null, size, format, type, !noMipmap, invertY, samplingMode, null);
     scene === null || scene === void 0 ? void 0 : scene.addPendingData(texture);
     texture.url = url;
+    texture.isReady = false;
     this._internalTexturesCache.push(texture);
     const onerror = (request, exception) => {
         scene === null || scene === void 0 ? void 0 : scene.removePendingData(texture);
@@ -65934,12 +66796,17 @@ class Ray {
         }
     }
     /**
-     * Checks if ray intersects a mesh
+     * Checks if ray intersects a mesh. The ray is defined in WORLD space. A mesh triangle can be picked both from its front and back sides,
+     * irrespective of orientation.
      * @param mesh the mesh to check
      * @param fastCheck defines if the first intersection will be used (and not the closest)
+     * @param trianglePredicate defines an optional predicate used to select faces when a mesh intersection is detected
+     * @param onlyBoundingInfo defines a boolean indicating if picking should only happen using bounding info (false by default)
+     * @param worldToUse defines the world matrix to use to get the world coordinate of the intersection point
+     * @param skipBoundingInfo a boolean indicating if we should skip the bounding info check
      * @returns picking info of the intersection
      */
-    intersectsMesh(mesh, fastCheck) {
+    intersectsMesh(mesh, fastCheck, trianglePredicate, onlyBoundingInfo = false, worldToUse, skipBoundingInfo = false) {
         const tm = TmpVectors.Matrix[0];
         mesh.getWorldMatrix().invertToRef(tm);
         if (this._tmpRay) {
@@ -65948,7 +66815,7 @@ class Ray {
         else {
             this._tmpRay = Ray.Transform(this, tm);
         }
-        return mesh.intersects(this._tmpRay, fastCheck);
+        return mesh.intersects(this._tmpRay, fastCheck, trianglePredicate, onlyBoundingInfo, worldToUse, skipBoundingInfo);
     }
     /**
      * Checks if ray intersects a mesh
@@ -66192,15 +67059,15 @@ class Ray {
      * @param projection defines the projection matrix to use
      */
     unprojectRayToRef(sourceX, sourceY, viewportWidth, viewportHeight, world, view, projection) {
-        var _a;
         const matrix = TmpVectors.Matrix[0];
         world.multiplyToRef(view, matrix);
         matrix.multiplyToRef(projection, matrix);
         matrix.invert();
+        const engine = EngineStore.LastCreatedEngine;
         const nearScreenSource = TmpVectors.Vector3[0];
         nearScreenSource.x = (sourceX / viewportWidth) * 2 - 1;
         nearScreenSource.y = -((sourceY / viewportHeight) * 2 - 1);
-        nearScreenSource.z = ((_a = EngineStore.LastCreatedEngine) === null || _a === void 0 ? void 0 : _a.isNDCHalfZRange) ? 0 : -1;
+        nearScreenSource.z = (engine === null || engine === void 0 ? void 0 : engine.useReverseDepthBuffer) ? 1 : (engine === null || engine === void 0 ? void 0 : engine.isNDCHalfZRange) ? 0 : -1;
         // far Z need to be close but < to 1 or camera projection matrix with maxZ = 0 will NaN
         const farScreenSource = TmpVectors.Vector3[1].copyFromFloats(nearScreenSource.x, nearScreenSource.y, 1.0 - 1e-8);
         const nearVec3 = TmpVectors.Vector3[2];
@@ -68993,6 +69860,18 @@ class FreeCamera extends TargetCamera {
         this.inputs.checkInputs();
         super._checkInputs();
     }
+    /**
+     * Enable movement without a user input. This allows gravity to always be applied.
+     */
+    set needMoveForGravity(value) {
+        this._needMoveForGravity = value;
+    }
+    /**
+     * When true, gravity is applied whether there is user input or not.
+     */
+    get needMoveForGravity() {
+        return this._needMoveForGravity;
+    }
     /** @internal */
     _decideIfNeedsToMove() {
         return this._needMoveForGravity || Math.abs(this.cameraDirection.x) > 0 || Math.abs(this.cameraDirection.y) > 0 || Math.abs(this.cameraDirection.z) > 0;
@@ -71697,7 +72576,7 @@ if (baseColor.a<alphaCutOff)discard;#endif
 alpha*=baseColor.a;#endif
 #define CUSTOM_FRAGMENT_UPDATE_ALPHA
 baseColor.rgb*=vDiffuseInfos.y;#endif
-#ifdef DECAL
+#if defined(DECAL) && !defined(DECAL_AFTER_DETAIL)
 vec4 decalColor=texture2D(decalSampler,vDecalUV+uvOffset);#include<decalFragment>(surfaceAlbedo,baseColor,GAMMADECAL,_GAMMADECAL_NOTUSED_)
 #endif
 #include<depthPrePass>
@@ -71705,6 +72584,9 @@ vec4 decalColor=texture2D(decalSampler,vDecalUV+uvOffset);#include<decalFragmen
 baseColor.rgb*=vColor.rgb;#endif
 #ifdef DETAIL
 baseColor.rgb=baseColor.rgb*2.0*mix(0.5,detailColor.r,vDetailInfos.y);#endif
+#if defined(DECAL) && defined(DECAL_AFTER_DETAIL)
+vec4 decalColor=texture2D(decalSampler,vDecalUV+uvOffset);#include<decalFragment>(surfaceAlbedo,baseColor,GAMMADECAL,_GAMMADECAL_NOTUSED_)
+#endif
 #define CUSTOM_FRAGMENT_UPDATE_DIFFUSE
 vec3 baseAmbientColor=vec3(1.,1.,1.);#ifdef AMBIENT
 baseAmbientColor=texture2D(ambientSampler,vAmbientUV+uvOffset).rgb*vAmbientInfos.y;#endif
@@ -72855,6 +73737,7 @@ class StandardMaterialDefines extends MaterialDefines {
          */
         this.IS_REFRACTION_LINEAR = false;
         this.EXPOSURE = false;
+        this.DECAL_AFTER_DETAIL = false;
         this.rebuild();
     }
     setReflectionMode(modeToEnable) {
@@ -73108,6 +73991,7 @@ class StandardMaterial extends PushMaterial {
         this._invertNormalMapX = false;
         this._invertNormalMapY = false;
         this._twoSidedLighting = false;
+        this._applyDecalMapAfterDetailMap = false;
         this._renderTargets = new SmartArray(16);
         this._worldViewProjectionMatrix = Matrix.Zero();
         this._globalAmbientColor = new Color3(0, 0, 0);
@@ -73468,7 +74352,7 @@ class StandardMaterial extends PushMaterial {
             }
         }
         // Misc.
-        MaterialHelper.PrepareDefinesForMisc(mesh, scene, this._useLogarithmicDepth, this.pointsCloud, this.fogEnabled, this._shouldTurnAlphaTestOn(mesh) || this._forceAlphaTest, defines);
+        MaterialHelper.PrepareDefinesForMisc(mesh, scene, this._useLogarithmicDepth, this.pointsCloud, this.fogEnabled, this._shouldTurnAlphaTestOn(mesh) || this._forceAlphaTest, defines, this._applyDecalMapAfterDetailMap);
         // Values that need to be evaluated on every frame
         MaterialHelper.PrepareDefinesForFrameBoundValues(scene, engine, this, defines, useInstances, null, subMesh.getRenderingMesh().hasThinInstances);
         // External config
@@ -74109,13 +74993,16 @@ class StandardMaterial extends PushMaterial {
     /**
      * Makes a duplicate of the material, and gives it a new name
      * @param name defines the new name for the duplicated material
+     * @param cloneTexturesOnlyOnce - if a texture is used in more than one channel (e.g diffuse and opacity), only clone it once and reuse it on the other channels. Default false.
+     * @param rootUrl defines the root URL to use to load textures
      * @returns the cloned material
      */
-    clone(name) {
-        const result = SerializationHelper.Clone(() => new StandardMaterial(name, this.getScene()), this);
+    clone(name, cloneTexturesOnlyOnce = true, rootUrl = "") {
+        const result = SerializationHelper.Clone(() => new StandardMaterial(name, this.getScene()), this, { cloneTexturesOnlyOnce });
         result.name = name;
         result.id = name;
         this.stencil.copyTo(result.stencil);
+        this._clonePlugins(result, rootUrl);
         return result;
     }
     /**
@@ -74130,6 +75017,7 @@ class StandardMaterial extends PushMaterial {
         if (source.stencil) {
             material.stencil.parse(source.stencil, scene, rootUrl);
         }
+        Material._parsePlugins(source, material, scene, rootUrl);
         return material;
     }
     // Flags used to enable or disable a type of texture for all Standard Materials
@@ -74456,6 +75344,12 @@ __decorate([
     expandToProperty("_markAllSubMeshesAsTexturesDirty")
 ], StandardMaterial.prototype, "twoSidedLighting", void 0);
 __decorate([
+    serialize("applyDecalMapAfterDetailMap")
+], StandardMaterial.prototype, "_applyDecalMapAfterDetailMap", void 0);
+__decorate([
+    expandToProperty("_markAllSubMeshesAsMiscDirty")
+], StandardMaterial.prototype, "applyDecalMapAfterDetailMap", void 0);
+__decorate([
     serialize()
 ], StandardMaterial.prototype, "useLogarithmicDepth", null);
 RegisterClass("BABYLON.StandardMaterial", StandardMaterial);
@@ -74480,9 +75374,9 @@ class ShaderMaterial extends PushMaterial {
      * @param name Define the name of the material in the scene
      * @param scene Define the scene the material belongs to
      * @param shaderPath Defines  the route to the shader code in one of three ways:
-     *  * object: { vertex: "custom", fragment: "custom" }, used with Effect.ShadersStore["customVertexShader"] and Effect.ShadersStore["customFragmentShader"]
-     *  * object: { vertexElement: "vertexShaderCode", fragmentElement: "fragmentShaderCode" }, used with shader code in script tags
-     *  * object: { vertexSource: "vertex shader code string", fragmentSource: "fragment shader code string" } using with strings containing the shaders code
+     *  * object: \{ vertex: "custom", fragment: "custom" \}, used with Effect.ShadersStore["customVertexShader"] and Effect.ShadersStore["customFragmentShader"]
+     *  * object: \{ vertexElement: "vertexShaderCode", fragmentElement: "fragmentShaderCode" \}, used with shader code in script tags
+     *  * object: \{ vertexSource: "vertex shader code string", fragmentSource: "fragment shader code string" \} using with strings containing the shaders code
      *  * string: "./COMMON_NAME", used with external files COMMON_NAME.vertex.fx and COMMON_NAME.fragment.fx in index.html folder.
      * @param options Define the options used to create the shader
      * @param storeEffectOnSubMeshes true to store effect on submeshes, false to store the effect directly in the material class.
@@ -74518,21 +75412,12 @@ class ShaderMaterial extends PushMaterial {
         this._cachedWorldViewMatrix = new Matrix();
         this._cachedWorldViewProjectionMatrix = new Matrix();
         this._multiview = false;
+        /**
+         * @internal
+         */
+        this._materialHelperNeedsPreviousMatrices = false;
         this._shaderPath = shaderPath;
-        this._options = {
-            needAlphaBlending: false,
-            needAlphaTesting: false,
-            attributes: ["position", "normal", "uv"],
-            uniforms: ["worldViewProjection"],
-            uniformBuffers: [],
-            samplers: [],
-            externalTextures: [],
-            samplerObjects: [],
-            storageBuffers: [],
-            defines: [],
-            useClipPlane: false,
-            ...options,
-        };
+        this._options = Object.assign({ needAlphaBlending: false, needAlphaTesting: false, attributes: ["position", "normal", "uv"], uniforms: ["worldViewProjection"], uniformBuffers: [], samplers: [], externalTextures: [], samplerObjects: [], storageBuffers: [], defines: [], useClipPlane: false }, options);
     }
     /**
      * Gets the shader path used to define the shader code
@@ -74554,6 +75439,12 @@ class ShaderMaterial extends PushMaterial {
      */
     get options() {
         return this._options;
+    }
+    /**
+     * is multiview set to true?
+     */
+    get isMultiview() {
+        return this._multiview;
     }
     /**
      * Gets the current class name of the material e.g. "ShaderMaterial"
@@ -74648,7 +75539,7 @@ class ShaderMaterial extends PushMaterial {
      * Set a unsigned int in the shader.
      * @param name Define the name of the uniform as defined in the shader
      * @param value Define the value to give to the uniform
-     * @return the material itself allowing "fluent" like uniform updates
+     * @returns the material itself allowing "fluent" like uniform updates
      */
     setUInt(name, value) {
         this._checkUniform(name);
@@ -74896,6 +75787,29 @@ class ShaderMaterial extends PushMaterial {
         return this;
     }
     /**
+     * Adds, removes, or replaces the specified shader define and value.
+     * * setDefine("MY_DEFINE", true); // enables a boolean define
+     * * setDefine("MY_DEFINE", "0.5"); // adds "#define MY_DEFINE 0.5" to the shader (or sets and replaces the value of any existing define with that name)
+     * * setDefine("MY_DEFINE", false); // disables and removes the define
+     * Note if the active defines do change, the shader will be recompiled and this can be expensive.
+     * @param define the define name e.g., "OUTPUT_TO_SRGB" or "#define OUTPUT_TO_SRGB". If the define was passed into the constructor already, the version used should match that, and in either case, it should not include any appended value.
+     * @param value either the value of the define (e.g. a numerical value) or for booleans, true if the define should be enabled or false if it should be disabled
+     * @returns the material itself allowing "fluent" like uniform updates
+     */
+    setDefine(define, value) {
+        // First remove any existing define with this name.
+        const defineName = define.trimEnd() + " ";
+        const existingDefineIdx = this.options.defines.findIndex((x) => x === define || x.startsWith(defineName));
+        if (existingDefineIdx >= 0) {
+            this.options.defines.splice(existingDefineIdx, 1);
+        }
+        // Then add the new define value. (If it's a boolean value and false, don't add it.)
+        if (typeof value !== "boolean" || value) {
+            this.options.defines.push(defineName + value);
+        }
+        return this;
+    }
+    /**
      * Specifies that the submesh is ready to be used
      * @param mesh defines the mesh to check
      * @param subMesh defines which submesh to check
@@ -74956,7 +75870,7 @@ class ShaderMaterial extends PushMaterial {
         }
         if (useInstances) {
             defines.push("#define INSTANCES");
-            MaterialHelper.PushAttributesForInstances(attribs);
+            MaterialHelper.PushAttributesForInstances(attribs, this._materialHelperNeedsPreviousMatrices);
             if (mesh === null || mesh === void 0 ? void 0 : mesh.hasThinInstances) {
                 defines.push("#define THIN_INSTANCES");
                 if (mesh && mesh.isVerticesDataPresent(VertexBuffer.ColorInstanceKind)) {
@@ -75394,10 +76308,10 @@ class ShaderMaterial extends PushMaterial {
         result.id = name;
         // Shader code path
         if (typeof result._shaderPath === "object") {
-            result._shaderPath = { ...result._shaderPath };
+            result._shaderPath = Object.assign({}, result._shaderPath);
         }
         // Options
-        this._options = { ...this._options };
+        this._options = Object.assign({}, this._options);
         Object.keys(this._options).forEach((propName) => {
             const propValue = this._options[propName];
             if (Array.isArray(propValue)) {
