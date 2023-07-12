@@ -25,11 +25,6 @@ import { World } from './lib/world'
 import { locationHasher } from './lib/util'
 
 
-import packageJSON from '../package.json'
-var version = packageJSON.version
-
-
-
 // profile every N ticks/renders
 var PROFILE = 0
 var PROFILE_RENDER = 0
@@ -103,10 +98,9 @@ export class Engine extends EventEmitter {
         opts = Object.assign({}, defaultOptions, opts)
 
         /** Version string, e.g. `"0.25.4"` */
-        this.version = version
         if (!opts.silent) {
             var debugstr = (opts.debug) ? ' (debug)' : ''
-            console.log(`noa-engine v${this.version}${debugstr}`)
+            console.log(`noa-engine ${debugstr}`)
         }
 
         /** @internal */
