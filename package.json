@@ -15,6 +15,7 @@
     },
     "author": "Andy Hall (https://fenomas.com)",
     "license": "MIT",
+    "type": "module",
     "repository": {
         "type": "git",
         "url": "https://github.com/fenomas/noa.git"
