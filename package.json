@@ -2,14 +2,14 @@
     "name": "noa-engine",
     "version": "0.33.0",
     "description": "Experimental voxel game engine",
-    "main": "src/index.js",
+    "main": "dist/index.js",
     "typings": "dist/src/index.d.ts",
     "files": [
         "/src",
         "/dist"
     ],
     "scripts": {
-        "build": "npm run types; npm run docs",
+        "build": "rimraf dist; rollup -c rollup.config.js; npm run types; npm run docs; ",
         "types": "tsc",
         "docs": "typedoc"
     },
@@ -39,8 +39,14 @@
         "@babylonjs/core": "^6.1.0"
     },
     "devDependencies": {
+        "@rollup/plugin-node-resolve": "^15.1.0",
+        "@rollup/plugin-typescript": "^11.1.2",
         "eslint": "^8.3.0",
         "js-beautify": "^1.14.0",
+        "rimraf": "^5.0.1",
+        "rollup": "^3.26.2",
+        "rollup-plugin-commonjs": "^10.1.0",
+        "rollup-plugin-peer-deps-external": "^2.2.4",
         "typedoc": "^0.24.6",
         "typedoc-plugin-missing-exports": "^2.0.0",
         "typescript": "^5.0.4"
