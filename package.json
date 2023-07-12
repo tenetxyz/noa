@@ -4,6 +4,7 @@
     "description": "Experimental voxel game engine",
     "main": "dist/index.js",
     "typings": "dist/src/index.d.ts",
+    "type": "module",
     "files": [
         "/src",
         "/dist"
@@ -39,6 +40,7 @@
         "@babylonjs/core": "^6.1.0"
     },
     "devDependencies": {
+        "@rollup/plugin-json": "^6.0.0",
         "@rollup/plugin-node-resolve": "^15.1.0",
         "@rollup/plugin-typescript": "^11.1.2",
         "eslint": "^8.3.0",
@@ -47,6 +49,7 @@
         "rollup": "^3.26.2",
         "rollup-plugin-commonjs": "^10.1.0",
         "rollup-plugin-peer-deps-external": "^2.2.4",
+        "tslib": "^2.6.0",
         "typedoc": "^0.24.6",
         "typedoc-plugin-missing-exports": "^2.0.0",
         "typescript": "^5.0.4"
