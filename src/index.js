@@ -713,8 +713,7 @@ function deprecateStuff(noa) {
 
 
 
-
-var makeProfileHook = require('./lib/util').makeProfileHook
+import { makeProfileHook } from './lib/util'
 var profile_hook = (PROFILE > 0) ?
     makeProfileHook(PROFILE, 'tick   ') : () => { }
 var profile_hook_render = (PROFILE_RENDER > 0) ?
