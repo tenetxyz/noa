@@ -2651,7 +2651,7 @@ function sweep_impl(getVoxel, callback, vec, base, max, epsilon) {
 
 // conform inputs
 
-function sweep$2(getVoxel, box, dir, callback, noTranslate, epsilon) {
+function sweep$1(getVoxel, box, dir, callback, noTranslate, epsilon) {
 
     var vec = vec_arr;
     var base = base_arr;
@@ -2682,7 +2682,7 @@ function sweep$2(getVoxel, box, dir, callback, noTranslate, epsilon) {
     return dist
 }
 
-var voxelAabbSweep = sweep$2;
+var voxelAabbSweep = sweep$1;
 
 /** 
  * The Camera class is found at [[Camera | `noa.camera`]].
@@ -2692,7 +2692,7 @@ var voxelAabbSweep = sweep$2;
 
 
 // default options
-var defaults$3 = {
+var defaults$2 = {
     inverseX: false,
     inverseY: false,
     sensitivityX: 10,
@@ -2733,7 +2733,7 @@ class Camera$1 {
 
     /** @internal */
     constructor(noa, opts) {
-        opts = Object.assign({}, defaults$3, opts);
+        opts = Object.assign({}, defaults$2, opts);
 
         /** 
          * @internal
@@ -4774,7 +4774,7 @@ function quickSort(left, right, data) {
   }
 }
 
-var sweep$1 = {
+var sweep = {
   init:           sqInit,
   sweepBipartite: sweepBipartite,
   sweepComplete:  sweepComplete,
@@ -5763,7 +5763,7 @@ function boxIntersectIter(
 
     if(full) {
       if(d * redCount * (redCount + blueCount) < SCAN_COMPLETE_CUTOFF) {
-        retval = sweep$1.scanComplete(
+        retval = sweep.scanComplete(
           d, axis, visit, 
           redStart, redEnd, red, redIndex,
           blueStart, blueEnd, blue, blueIndex);
@@ -5785,7 +5785,7 @@ function boxIntersectIter(
         continue
       } else if(d * redCount * blueCount < SCAN_CUTOFF) {
         //If input medium sized, then use sweep and prune
-        retval = sweep$1.scanBipartite(
+        retval = sweep.scanBipartite(
           d, axis, visit, flip, 
           redStart, redEnd, red, redIndex,
           blueStart, blueEnd, blue, blueIndex);
@@ -5816,12 +5816,12 @@ function boxIntersectIter(
         }
       } else if(axis === d-2) {
         if(flip) {
-          retval = sweep$1.sweepBipartite(
+          retval = sweep.sweepBipartite(
             d, visit,
             blueStart, blueEnd, blue, blueIndex,
             redStart, red0, red, redIndex);
         } else {
-          retval = sweep$1.sweepBipartite(
+          retval = sweep.sweepBipartite(
             d, visit,
             redStart, red0, red, redIndex,
             blueStart, blueEnd, blue, blueIndex);
@@ -5917,7 +5917,7 @@ function boxIntersectIter(
               //Degenerate sweep intersection:
               //  [red0, redX] with [blue0, blue1]
               if(red0 < redX) {
-                retval = sweep$1.sweepComplete(
+                retval = sweep.sweepComplete(
                   d, visit,
                   red0, redX, red, redIndex,
                   blue0, blue1, blue, blueIndex);
@@ -5929,7 +5929,7 @@ function boxIntersectIter(
               //Normal sweep intersection:
               //  [redX, red1] with [blue0, blue1]
               if(redX < red1) {
-                retval = sweep$1.sweepBipartite(
+                retval = sweep.sweepBipartite(
                   d, visit,
                   redX, red1, red, redIndex,
                   blue0, blue1, blue, blueIndex);
@@ -5977,12 +5977,12 @@ function boxIntersectIter(
           if(red0 < red1) {
             if(axis === d-2) {
               if(flip) {
-                retval = sweep$1.sweepBipartite(
+                retval = sweep.sweepBipartite(
                   d, visit,
                   blue0, blue1, blue, blueIndex,
                   red0, red1, red, redIndex);
               } else {
-                retval = sweep$1.sweepBipartite(
+                retval = sweep.sweepBipartite(
                   d, visit,
                   red0, red1, red, redIndex,
                   blue0, blue1, blue, blueIndex);
@@ -6066,8 +6066,8 @@ function boxIntersect(red, blue, visit, full) {
   if(n > 0) {
     if(d === 1 && full) {
       //Special case: 1d complete
-      sweep$1.init(n);
-      retval = sweep$1.sweepComplete(
+      sweep.init(n);
+      retval = sweep.sweepComplete(
         d, visit, 
         0, n, redList, redIds,
         0, n, redList, redIds);
@@ -6079,11 +6079,11 @@ function boxIntersect(red, blue, visit, full) {
       m = convertBoxes(blue, d, blueList, blueIds);
 
       if(m > 0) {
-        sweep$1.init(n+m);
+        sweep.init(n+m);
 
         if(d === 1) {
           //Special case: 1d bipartite
-          retval = sweep$1.sweepBipartite(
+          retval = sweep.sweepBipartite(
             d, visit, 
             0, n, redList,  redIds,
             0, m, blueList, blueIds);
@@ -8208,7 +8208,7 @@ var TmpColors = /** @class */ (function () {
 _TypeStore.RegisteredTypes["BABYLON.Color3"] = Color3;
 _TypeStore.RegisteredTypes["BABYLON.Color4"] = Color4;
 
-/******************************************************************************
+/*! *****************************************************************************
 Copyright (c) Microsoft Corporation.
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -8222,83 +8222,78 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
-/* global Reflect, Promise, SuppressedError, Symbol */
+/* global Reflect, Promise */
 
 var extendStatics = function(d, b) {
-  extendStatics = Object.setPrototypeOf ||
-      ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-      function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
-  return extendStatics(d, b);
+    extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+    return extendStatics(d, b);
 };
 
 function __extends(d, b) {
-  if (typeof b !== "function" && b !== null)
-      throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
-  extendStatics(d, b);
-  function __() { this.constructor = d; }
-  d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    if (typeof b !== "function" && b !== null)
+        throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+    extendStatics(d, b);
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 }
 
 var __assign = function() {
-  __assign = Object.assign || function __assign(t) {
-      for (var s, i = 1, n = arguments.length; i < n; i++) {
-          s = arguments[i];
-          for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
-      }
-      return t;
-  };
-  return __assign.apply(this, arguments);
+    __assign = Object.assign || function __assign(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
 };
 
 function __decorate(decorators, target, key, desc) {
-  var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-  if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-  else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-  return c > 3 && r && Object.defineProperty(target, key, r), r;
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
 }
 
 function __awaiter(thisArg, _arguments, P, generator) {
-  function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-  return new (P || (P = Promise))(function (resolve, reject) {
-      function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-      function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-      function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-      step((generator = generator.apply(thisArg, _arguments || [])).next());
-  });
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
 }
 
 function __generator(thisArg, body) {
-  var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
-  return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-  function verb(n) { return function (v) { return step([n, v]); }; }
-  function step(op) {
-      if (f) throw new TypeError("Generator is already executing.");
-      while (g && (g = 0, op[0] && (_ = 0)), _) try {
-          if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-          if (y = 0, t) op = [op[0] & 2, t.value];
-          switch (op[0]) {
-              case 0: case 1: t = op; break;
-              case 4: _.label++; return { value: op[1], done: false };
-              case 5: _.label++; y = op[1]; op = [0]; continue;
-              case 7: op = _.ops.pop(); _.trys.pop(); continue;
-              default:
-                  if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                  if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                  if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                  if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                  if (t[2]) _.ops.pop();
-                  _.trys.pop(); continue;
-          }
-          op = body.call(thisArg, _);
-      } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-      if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-  }
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
 }
-
-typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
-  var e = new Error(message);
-  return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
-};
 
 /**
  * A class serves as a medium between the observable and its observers
@@ -61815,7 +61810,7 @@ function GreedyMesher(noa) {
 */
 
 
-var defaults$2 = {
+var defaults$1 = {
     texturePath: ''
 };
 
@@ -61877,7 +61872,7 @@ class Registry {
 
     /** @internal */
     constructor(noa, opts) {
-        opts = Object.assign({}, defaults$2, opts);
+        opts = Object.assign({}, defaults$1, opts);
         /** @internal */
         this.noa = noa;
 
@@ -71972,7 +71967,7 @@ var LinesBuilder = /** @class */ (function () {
 
 
 
-var defaults$1 = {
+var defaults = {
     showFPS: false,
     antiAlias: true,
     clearColor: [0.8, 0.9, 1],
@@ -72019,7 +72014,7 @@ class Rendering {
 
     /** @internal */
     constructor(noa, opts, canvas) {
-        opts = Object.assign({}, defaults$1, opts);
+        opts = Object.assign({}, defaults, opts);
         /** @internal */
         this.noa = noa;
 
@@ -72510,21 +72505,77 @@ function setUpFPS() {
     };
 }
 
-var aabb = require('aabb-3d');
-var vec3 = require('gl-vec3');
-var sweep = require('voxel-aabb-sweep');
-var RigidBody = require('./rigidBody');
+/*
+ *    RIGID BODY - internal data structure
+ *  Only AABB bodies right now. Someday will likely need spheres?
+*/
+
+class RigidBody {
+    constructor(_aabb, mass, friction, restitution, gravMult, onCollide, autoStep) {
+        this.aabb = new aabb3d(_aabb.base, _aabb.vec); // clone
+        this.mass = mass;
+        this.friction = friction;
+        this.restitution = restitution;
+        this.gravityMultiplier = gravMult;
+        this.onCollide = onCollide;
+        this.autoStep = !!autoStep;
+        this.airDrag = -1;   // overrides global airDrag when >= 0
+        this.fluidDrag = -1; // overrides global fluidDrag when >= 0
+        this.onStep = null;
+
+        // internal state
+        this.velocity = glVec3.create();
+        this.resting = [0, 0, 0];
+        this.inFluid = false;
+
+        // internals
+        /** @internal */
+        this._ratioInFluid = 0;
+        /** @internal */
+        this._forces = glVec3.create();
+        /** @internal */
+        this._impulses = glVec3.create();
+        /** @internal */
+        this._sleepFrameCount = 10 | 0;
+    }
+
+    setPosition(p) {
+        glVec3.subtract(p, p, this.aabb.base);
+        this.aabb.translate(p);
+        this._markActive();
+    }
+    getPosition() {
+        return glVec3.clone(this.aabb.base)
+    }
+    applyForce(f) {
+        glVec3.add(this._forces, this._forces, f);
+        this._markActive();
+    }
+    applyImpulse(i) {
+        glVec3.add(this._impulses, this._impulses, i);
+        this._markActive();
+    }
+
+    /** @internal */
+    _markActive() {
+        this._sleepFrameCount = 10 | 0;
+    }
 
 
 
+    // temp
+    atRestX() { return this.resting[0] }
+    atRestY() { return this.resting[1] }
+    atRestZ() { return this.resting[2] }
+}
 
-var defaults = {
-    airDrag: 0.1,
-    fluidDrag: 0.4,
-    fluidDensity: 2.0,
-    gravity: [0, -10, 0],
-    minBounceImpulse: .5, // lowest collision impulse that bounces
-};
+function DefaultOptions() {
+    this.airDrag = 0.1;
+    this.fluidDrag = 0.4;
+    this.fluidDensity = 2.0;
+    this.gravity = [0, -10, 0];
+    this.minBounceImpulse = .5; // lowest collision impulse that bounces
+}
 
 
 
@@ -72548,16 +72599,19 @@ var defaults = {
  *     gravity: [0, -10, 0],
  *     minBounceImpulse: .5, // lowest collision impulse that bounces
  * }
- * 
  * ```
+ * 
+ * @param {(x:number, y:number, z:number) => boolean} testSolid
+ * @param {(x:number, y:number, z:number) => boolean} testFluid
+ * 
 */
 function Physics$1(opts, testSolid, testFluid) {
-    opts = Object.assign({}, defaults, opts);
+    opts = Object.assign(new DefaultOptions(), opts);
 
-    this.gravity = opts.gravity;
-    this.airDrag = opts.airDrag;
-    this.fluidDensity = opts.fluidDensity;
-    this.fluidDrag = opts.fluidDrag;
+    this.gravity = opts.gravity || [0, -10, 0];
+    this.airDrag = opts.airDrag || 0.1;
+    this.fluidDensity = opts.fluidDensity || 2.0;
+    this.fluidDrag = opts.fluidDrag || 0.4;
     this.minBounceImpulse = opts.minBounceImpulse;
     this.bodies = [];
 
@@ -72573,7 +72627,7 @@ function Physics$1(opts, testSolid, testFluid) {
 */
 Physics$1.prototype.addBody = function (_aabb, mass, friction,
     restitution, gravMult, onCollide) {
-    _aabb = _aabb || new aabb([0, 0, 0], [1, 1, 1]);
+    _aabb = _aabb || new aabb3d([0, 0, 0], [1, 1, 1]);
     if (typeof mass == 'undefined') mass = 1;
     if (typeof friction == 'undefined') friction = 1;
     if (typeof restitution == 'undefined') restitution = 0;
@@ -72598,18 +72652,18 @@ Physics$1.prototype.removeBody = function (b) {
  *    PHYSICS AND COLLISIONS
 */
 
-var a = vec3.create();
-var dv = vec3.create();
-var dx = vec3.create();
-var impacts = vec3.create();
-var oldResting = vec3.create();
+var a = glVec3.create();
+var dv = glVec3.create();
+var dx = glVec3.create();
+var impacts = glVec3.create();
+var oldResting = glVec3.create();
 
 
 /* Ticks the simulation forwards in time. */
 Physics$1.prototype.tick = function (dt) {
     // convert dt to seconds
     dt = dt / 1000;
-    var noGravity = equals(0, vec3.squaredLength(this.gravity));
+    var noGravity = equals(0, glVec3.squaredLength(this.gravity));
     this.bodies.forEach(b => iterateBody(this, b, dt, noGravity));
 };
 
@@ -72620,13 +72674,13 @@ Physics$1.prototype.tick = function (dt) {
 */
 
 function iterateBody(self, b, dt, noGravity) {
-    vec3.copy(oldResting, b.resting);
+    glVec3.copy(oldResting, b.resting);
 
     // treat bodies with <= mass as static
     if (b.mass <= 0) {
-        vec3.set(b.velocity, 0, 0, 0);
-        vec3.set(b._forces, 0, 0, 0);
-        vec3.set(b._impulses, 0, 0, 0);
+        glVec3.set(b.velocity, 0, 0, 0);
+        glVec3.set(b._forces, 0, 0, 0);
+        glVec3.set(b._impulses, 0, 0, 0);
         return
     }
 
@@ -72647,14 +72701,14 @@ function iterateBody(self, b, dt, noGravity) {
     // semi-implicit Euler integration
 
     // a = f/m + gravity*gravityMultiplier
-    vec3.scale(a, b._forces, 1 / b.mass);
-    vec3.scaleAndAdd(a, a, self.gravity, b.gravityMultiplier);
+    glVec3.scale(a, b._forces, 1 / b.mass);
+    glVec3.scaleAndAdd(a, a, self.gravity, b.gravityMultiplier);
 
     // dv = i/m + a*dt
     // v1 = v0 + dv
-    vec3.scale(dv, b._impulses, 1 / b.mass);
-    vec3.scaleAndAdd(dv, dv, a, dt);
-    vec3.add(b.velocity, b.velocity, dv);
+    glVec3.scale(dv, b._impulses, 1 / b.mass);
+    glVec3.scaleAndAdd(dv, dv, a, dt);
+    glVec3.add(b.velocity, b.velocity, dv);
 
     // apply friction based on change in velocity this frame
     if (b.friction) {
@@ -72671,14 +72725,14 @@ function iterateBody(self, b, dt, noGravity) {
         drag *= 1 - (1 - b.ratioInFluid) ** 2;
     }
     var mult = Math.max(1 - drag * dt / b.mass, 0);
-    vec3.scale(b.velocity, b.velocity, mult);
+    glVec3.scale(b.velocity, b.velocity, mult);
 
     // x1-x0 = v1*dt
-    vec3.scale(dx, b.velocity, dt);
+    glVec3.scale(dx, b.velocity, dt);
 
     // clear forces and impulses for next timestep
-    vec3.set(b._forces, 0, 0, 0);
-    vec3.set(b._impulses, 0, 0, 0);
+    glVec3.set(b._forces, 0, 0, 0);
+    glVec3.set(b._impulses, 0, 0, 0);
 
     // cache old position for use in autostepping
     if (b.autoStep) {
@@ -72702,24 +72756,24 @@ function iterateBody(self, b, dt, noGravity) {
             b.velocity[i] = 0;
         }
     }
-    var mag = vec3.length(impacts);
+    var mag = glVec3.length(impacts);
     if (mag > .001) { // epsilon
         // send collision event - allows client to optionally change
         // body's restitution depending on what terrain it hit
         // event argument is impulse J = m * dv
-        vec3.scale(impacts, impacts, b.mass);
+        glVec3.scale(impacts, impacts, b.mass);
         if (b.onCollide) b.onCollide(impacts);
 
         // bounce depending on restitution and minBounceImpulse
         if (b.restitution > 0 && mag > self.minBounceImpulse) {
-            vec3.scale(impacts, impacts, b.restitution);
+            glVec3.scale(impacts, impacts, b.restitution);
             b.applyImpulse(impacts);
         }
     }
 
 
     // sleep check
-    var vsq = vec3.squaredLength(b.velocity);
+    var vsq = glVec3.squaredLength(b.velocity);
     if (vsq > 1e-5) b._markActive();
 }
 
@@ -72764,14 +72818,14 @@ function applyFluidForces(self, body) {
     var displaced = vol * ratioInFluid;
     // bouyant force = -gravity * fluidDensity * volumeDisplaced
     var f = _fluidVec;
-    vec3.scale(f, self.gravity, -self.fluidDensity * displaced);
+    glVec3.scale(f, self.gravity, -self.fluidDensity * displaced);
     body.applyForce(f);
 
     body.inFluid = true;
     body.ratioInFluid = ratioInFluid;
 }
 
-var _fluidVec = vec3.create();
+var _fluidVec = glVec3.create();
 
 
 
@@ -72790,9 +72844,9 @@ function applyFrictionByAxis(axis, body, dvel) {
     if (restDir * vNormal <= 0) return
 
     // current vel lateral to friction axis
-    vec3.copy(lateralVel, body.velocity);
+    glVec3.copy(lateralVel, body.velocity);
     lateralVel[axis] = 0;
-    var vCurr = vec3.length(lateralVel);
+    var vCurr = glVec3.length(lateralVel);
     if (equals(vCurr, 0)) return
 
     // treat current change in velocity as the result of a pseudoforce
@@ -72811,7 +72865,7 @@ function applyFrictionByAxis(axis, body, dvel) {
     body.velocity[(axis + 1) % 3] *= scaler;
     body.velocity[(axis + 2) % 3] *= scaler;
 }
-var lateralVel = vec3.create();
+var lateralVel = glVec3.create();
 
 
 
@@ -72824,8 +72878,8 @@ var lateralVel = vec3.create();
 
 // sweep aabb along velocity vector and set resting vector
 function processCollisions(self, box, velocity, resting) {
-    vec3.set(resting, 0, 0, 0);
-    return sweep(self.testSolid, box, velocity, function (dist, axis, dir, vec) {
+    glVec3.set(resting, 0, 0, 0);
+    return voxelAabbSweep(self.testSolid, box, velocity, function (dist, axis, dir, vec) {
         resting[axis] = dir;
         vec[axis] = 0;
     })
@@ -72839,11 +72893,11 @@ function processCollisions(self, box, velocity, resting) {
  *    AUTO-STEPPING
 */
 
-var tmpBox = new aabb([], []);
-var tmpResting = vec3.create();
-var targetPos = vec3.create();
-var upvec = vec3.create();
-var leftover = vec3.create();
+var tmpBox = new aabb3d([], []);
+var tmpResting = glVec3.create();
+var targetPos = glVec3.create();
+var upvec = glVec3.create();
+var leftover = glVec3.create();
 
 function tryAutoStepping(self, b, oldBox, dx) {
     if (b.resting[1] >= 0 && !b.inFluid) return
@@ -72860,28 +72914,28 @@ function tryAutoStepping(self, b, oldBox, dx) {
     if (!zBlocked && ratio < 1 / cutoff) return
 
     // original target position before being obstructed
-    vec3.add(targetPos, oldBox.base, dx);
+    glVec3.add(targetPos, oldBox.base, dx);
 
     // move towards the target until the first X/Z collision
     var getVoxels = self.testSolid;
-    sweep(getVoxels, oldBox, dx, function (dist, axis, dir, vec) {
+    voxelAabbSweep(getVoxels, oldBox, dx, function (dist, axis, dir, vec) {
         if (axis === 1) vec[axis] = 0;
         else return true
     });
 
     var y = b.aabb.base[1];
     var ydist = Math.floor(y + 1.001) - y;
-    vec3.set(upvec, 0, ydist, 0);
+    glVec3.set(upvec, 0, ydist, 0);
     var collided = false;
     // sweep up, bailing on any obstruction
-    sweep(getVoxels, oldBox, upvec, function (dist, axis, dir, vec) {
+    voxelAabbSweep(getVoxels, oldBox, upvec, function (dist, axis, dir, vec) {
         collided = true;
         return true
     });
     if (collided) return // could't move upwards
 
     // now move in X/Z however far was left over before hitting the obstruction
-    vec3.subtract(leftover, targetPos, oldBox.base);
+    glVec3.subtract(leftover, targetPos, oldBox.base);
     leftover[1] = 0;
     processCollisions(self, oldBox, leftover, tmpResting);
 
@@ -72913,14 +72967,14 @@ function bodyAsleep(self, body, dt, noGravity) {
     // and check there's still a collision
     var isResting = false;
     var gmult = 0.5 * dt * dt * body.gravityMultiplier;
-    vec3.scale(sleepVec, self.gravity, gmult);
-    sweep(self.testSolid, body.aabb, sleepVec, function () {
+    glVec3.scale(sleepVec, self.gravity, gmult);
+    voxelAabbSweep(self.testSolid, body.aabb, sleepVec, function () {
         isResting = true;
         return true
     }, true);
     return isResting
 }
-var sleepVec = vec3.create();
+var sleepVec = glVec3.create();
 
 
 
