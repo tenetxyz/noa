@@ -7147,20 +7147,15 @@ var ArrayTools = /** @class */ (function () {
 }());
 
 /** @hidden */
-var _TypeStore = /** @class */ (function () {
-    function _TypeStore() {
-    }
-    /** @hidden */
-    _TypeStore.GetClass = function (fqdn) {
-        if (this.RegisteredTypes && this.RegisteredTypes[fqdn]) {
-            return this.RegisteredTypes[fqdn];
-        }
-        return null;
-    };
-    /** @hidden */
-    _TypeStore.RegisteredTypes = {};
-    return _TypeStore;
-}());
+var _RegisteredTypes = {};
+/** @hidden */
+function RegisterClass(className, type) {
+    _RegisteredTypes[className] = type;
+}
+/** @hidden */
+function GetClass(fqdn) {
+    return _RegisteredTypes[fqdn];
+}
 
 /**
  * Class used to hold a RGB color
@@ -7639,6 +7634,27 @@ var Color3 = /** @class */ (function () {
         result.b = left.b + ((right.b - left.b) * amount);
     };
     /**
+     * Returns a new Color3 located for "amount" (float) on the Hermite interpolation spline defined by the vectors "value1", "tangent1", "value2", "tangent2"
+     * @param value1 defines the first control point
+     * @param tangent1 defines the first tangent Color3
+     * @param value2 defines the second control point
+     * @param tangent2 defines the second tangent Color3
+     * @param amount defines the amount on the interpolation spline (between 0 and 1)
+     * @returns the new Color3
+     */
+    Color3.Hermite = function (value1, tangent1, value2, tangent2, amount) {
+        var squared = amount * amount;
+        var cubed = amount * squared;
+        var part1 = ((2.0 * cubed) - (3.0 * squared)) + 1.0;
+        var part2 = (-2.0 * cubed) + (3.0 * squared);
+        var part3 = (cubed - (2.0 * squared)) + amount;
+        var part4 = cubed - squared;
+        var r = (((value1.r * part1) + (value2.r * part2)) + (tangent1.r * part3)) + (tangent2.r * part4);
+        var g = (((value1.g * part1) + (value2.g * part2)) + (tangent1.g * part3)) + (tangent2.g * part4);
+        var b = (((value1.b * part1) + (value2.b * part2)) + (tangent1.b * part3)) + (tangent2.b * part4);
+        return new Color3(r, g, b);
+    };
+    /**
      * Returns a new Color3 which is the 1st derivative of the Hermite spline defined by the colors "value1", "value2", "tangent1", "tangent2".
      * @param value1 defines the first control point
      * @param tangent1 defines the first tangent
@@ -8063,13 +8079,13 @@ var Color4 = /** @class */ (function () {
      * @returns a new Color4 object
      */
     Color4.FromHexString = function (hex) {
-        if (hex.substring(0, 1) !== "#" || hex.length !== 9) {
+        if (hex.substring(0, 1) !== "#" || (hex.length !== 9 && hex.length !== 7)) {
             return new Color4(0.0, 0.0, 0.0, 0.0);
         }
         var r = parseInt(hex.substring(1, 3), 16);
         var g = parseInt(hex.substring(3, 5), 16);
         var b = parseInt(hex.substring(5, 7), 16);
-        var a = parseInt(hex.substring(7, 9), 16);
+        var a = hex.length === 9 ? parseInt(hex.substring(7, 9), 16) : 255;
         return Color4.FromInts(r, g, b, a);
     };
     /**
@@ -8096,6 +8112,28 @@ var Color4 = /** @class */ (function () {
         result.g = left.g + (right.g - left.g) * amount;
         result.b = left.b + (right.b - left.b) * amount;
         result.a = left.a + (right.a - left.a) * amount;
+    };
+    /**
+     * Interpolate between two Color4 using Hermite interpolation
+     * @param value1 defines first Color4
+     * @param tangent1 defines the incoming tangent
+     * @param value2 defines second Color4
+     * @param tangent2 defines the outgoing tangent
+     * @param amount defines the target Color4
+     * @returns the new interpolated Color4
+     */
+    Color4.Hermite = function (value1, tangent1, value2, tangent2, amount) {
+        var squared = amount * amount;
+        var cubed = amount * squared;
+        var part1 = ((2.0 * cubed) - (3.0 * squared)) + 1.0;
+        var part2 = (-2.0 * cubed) + (3.0 * squared);
+        var part3 = (cubed - (2.0 * squared)) + amount;
+        var part4 = cubed - squared;
+        var r = (((value1.r * part1) + (value2.r * part2)) + (tangent1.r * part3)) + (tangent2.r * part4);
+        var g = (((value1.g * part1) + (value2.g * part2)) + (tangent1.g * part3)) + (tangent2.g * part4);
+        var b = (((value1.b * part1) + (value2.b * part2)) + (tangent1.b * part3)) + (tangent2.b * part4);
+        var a = (((value1.a * part1) + (value2.a * part2)) + (tangent1.a * part3)) + (tangent2.a * part4);
+        return new Color4(r, g, b, a);
     };
     /**
      * Returns a new Color4 which is the 1st derivative of the Hermite spline defined by the colors "value1", "value2", "tangent1", "tangent2".
@@ -8205,8 +8243,8 @@ var TmpColors = /** @class */ (function () {
     TmpColors.Color4 = ArrayTools.BuildArray(3, function () { return new Color4(0, 0, 0, 0); });
     return TmpColors;
 }());
-_TypeStore.RegisteredTypes["BABYLON.Color3"] = Color3;
-_TypeStore.RegisteredTypes["BABYLON.Color4"] = Color4;
+RegisterClass("BABYLON.Color3", Color3);
+RegisterClass("BABYLON.Color4", Color4);
 
 /*! *****************************************************************************
 Copyright (c) Microsoft Corporation.
@@ -8384,6 +8422,28 @@ var Observable = /** @class */ (function () {
             this._onObserverAdded = onObserverAdded;
         }
     }
+    /**
+     * Create an observable from a Promise.
+     * @param promise a promise to observe for fulfillment.
+     * @param onErrorObservable an observable to notify if a promise was rejected.
+     * @returns the new Observable
+     */
+    Observable.FromPromise = function (promise, onErrorObservable) {
+        var observable = new Observable();
+        promise
+            .then(function (ret) {
+            observable.notifyObservers(ret);
+        })
+            .catch(function (err) {
+            if (onErrorObservable) {
+                onErrorObservable.notifyObservers(err);
+            }
+            else {
+                throw err;
+            }
+        });
+        return observable;
+    };
     Object.defineProperty(Observable.prototype, "observers", {
         /**
          * Gets the list of observers
@@ -8667,51 +8727,69 @@ var Observable = /** @class */ (function () {
 }());
 
 /**
+ * Checks if the window object exists
+ * @returns true if the window object exists
+ */
+function IsWindowObjectExist() {
+    return (typeof window) !== "undefined";
+}
+/**
+ * Checks if the navigator object exists
+ * @returns true if the navigator object exists
+ */
+function IsNavigatorAvailable() {
+    return (typeof navigator) !== "undefined";
+}
+/**
+ * Check if the document object exists
+ * @returns true if the document object exists
+ */
+function IsDocumentAvailable() {
+    return (typeof document) !== "undefined";
+}
+/**
+ * Extracts text content from a DOM element hierarchy
+ * @param element defines the root element
+ * @returns a string
+ */
+function GetDOMTextContent(element) {
+    var result = "";
+    var child = element.firstChild;
+    while (child) {
+        if (child.nodeType === 3) {
+            result += child.textContent;
+        }
+        child = (child.nextSibling);
+    }
+    return result;
+}
+/**
  * Sets of helpers dealing with the DOM and some of the recurrent functions needed in
  * Babylon.js
  */
-var DomManagement = /** @class */ (function () {
-    function DomManagement() {
-    }
+var DomManagement = {
     /**
      * Checks if the window object exists
      * @returns true if the window object exists
      */
-    DomManagement.IsWindowObjectExist = function () {
-        return (typeof window) !== "undefined";
-    };
+    IsWindowObjectExist: IsWindowObjectExist,
     /**
      * Checks if the navigator object exists
      * @returns true if the navigator object exists
      */
-    DomManagement.IsNavigatorAvailable = function () {
-        return (typeof navigator) !== "undefined";
-    };
+    IsNavigatorAvailable: IsNavigatorAvailable,
     /**
      * Check if the document object exists
      * @returns true if the document object exists
      */
-    DomManagement.IsDocumentAvailable = function () {
-        return (typeof document) !== "undefined";
-    };
+    IsDocumentAvailable: IsDocumentAvailable,
     /**
      * Extracts text content from a DOM element hierarchy
      * @param element defines the root element
      * @returns a string
      */
-    DomManagement.GetDOMTextContent = function (element) {
-        var result = "";
-        var child = element.firstChild;
-        while (child) {
-            if (child.nodeType === 3) {
-                result += child.textContent;
-            }
-            child = (child.nextSibling);
-        }
-        return result;
-    };
-    return DomManagement;
-}());
+    GetDOMTextContent: GetDOMTextContent
+};
 
 /**
  * Logger used throughout the application to allow configuration of
@@ -8893,114 +8971,78 @@ var Logger = /** @class */ (function () {
 }());
 
 /**
- * Helper to manipulate strings
+ * Checks for a matching suffix at the end of a string (for ES5 and lower)
+ * @param str Source string
+ * @param suffix Suffix to search for in the source string
+ * @returns Boolean indicating whether the suffix was found (true) or not (false)
  */
-var StringTools = /** @class */ (function () {
-    function StringTools() {
+var EndsWith = function (str, suffix) {
+    return str.indexOf(suffix, str.length - suffix.length) !== -1;
+};
+/**
+ * Checks for a matching suffix at the beginning of a string (for ES5 and lower)
+ * @param str Source string
+ * @param suffix Suffix to search for in the source string
+ * @returns Boolean indicating whether the suffix was found (true) or not (false)
+ */
+var StartsWith = function (str, suffix) {
+    if (!str) {
+        return false;
     }
-    /**
-     * Checks for a matching suffix at the end of a string (for ES5 and lower)
-     * @param str Source string
-     * @param suffix Suffix to search for in the source string
-     * @returns Boolean indicating whether the suffix was found (true) or not (false)
-     */
-    StringTools.EndsWith = function (str, suffix) {
-        return str.indexOf(suffix, str.length - suffix.length) !== -1;
-    };
-    /**
-     * Checks for a matching suffix at the beginning of a string (for ES5 and lower)
-     * @param str Source string
-     * @param suffix Suffix to search for in the source string
-     * @returns Boolean indicating whether the suffix was found (true) or not (false)
-     */
-    StringTools.StartsWith = function (str, suffix) {
-        if (!str) {
-            return false;
+    return str.indexOf(suffix) === 0;
+};
+/**
+ * Encode a buffer to a base64 string
+ * @param buffer defines the buffer to encode
+ * @returns the encoded string
+ */
+var EncodeArrayBufferToBase64 = function (buffer) {
+    var keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    var output = "";
+    var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
+    var i = 0;
+    var bytes = ArrayBuffer.isView(buffer) ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) : new Uint8Array(buffer);
+    while (i < bytes.length) {
+        chr1 = bytes[i++];
+        chr2 = i < bytes.length ? bytes[i++] : Number.NaN;
+        chr3 = i < bytes.length ? bytes[i++] : Number.NaN;
+        enc1 = chr1 >> 2;
+        enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+        enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+        enc4 = chr3 & 63;
+        if (isNaN(chr2)) {
+            enc3 = enc4 = 64;
         }
-        return str.indexOf(suffix) === 0;
-    };
-    /**
-     * Decodes a buffer into a string
-     * @param buffer The buffer to decode
-     * @returns The decoded string
-     */
-    StringTools.Decode = function (buffer) {
-        if (typeof TextDecoder !== "undefined") {
-            return new TextDecoder().decode(buffer);
+        else if (isNaN(chr3)) {
+            enc4 = 64;
         }
-        var result = "";
-        for (var i = 0; i < buffer.byteLength; i++) {
-            result += String.fromCharCode(buffer[i]);
-        }
-        return result;
-    };
-    /**
-     * Encode a buffer to a base64 string
-     * @param buffer defines the buffer to encode
-     * @returns the encoded string
-     */
-    StringTools.EncodeArrayBufferToBase64 = function (buffer) {
-        var keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
-        var output = "";
-        var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
-        var i = 0;
-        var bytes = ArrayBuffer.isView(buffer) ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) : new Uint8Array(buffer);
-        while (i < bytes.length) {
-            chr1 = bytes[i++];
-            chr2 = i < bytes.length ? bytes[i++] : Number.NaN;
-            chr3 = i < bytes.length ? bytes[i++] : Number.NaN;
-            enc1 = chr1 >> 2;
-            enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
-            enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
-            enc4 = chr3 & 63;
-            if (isNaN(chr2)) {
-                enc3 = enc4 = 64;
-            }
-            else if (isNaN(chr3)) {
-                enc4 = 64;
-            }
-            output += keyStr.charAt(enc1) + keyStr.charAt(enc2) +
-                keyStr.charAt(enc3) + keyStr.charAt(enc4);
-        }
-        return output;
-    };
-    /**
-     * Converts a given base64 string as an ASCII encoded stream of data
-     * @param base64Data The base64 encoded string to decode
-     * @returns Decoded ASCII string
-     */
-    StringTools.DecodeBase64ToString = function (base64Data) {
-        return atob(base64Data);
-    };
-    /**
-     * Converts a given base64 string into an ArrayBuffer of raw byte data
-     * @param base64Data The base64 encoded string to decode
-     * @returns ArrayBuffer of byte data
-     */
-    StringTools.DecodeBase64ToBinary = function (base64Data) {
-        var decodedString = StringTools.DecodeBase64ToString(base64Data);
-        var bufferLength = decodedString.length;
-        var bufferView = new Uint8Array(new ArrayBuffer(bufferLength));
-        for (var i = 0; i < bufferLength; i++) {
-            bufferView[i] = decodedString.charCodeAt(i);
-        }
-        return bufferView.buffer;
-    };
-    /**
-    * Converts a number to string and pads with preceding zeroes until it is of specified length.
-    * @param num the number to convert and pad
-    * @param length the expected length of the string
-    * @returns the padded string
-    */
-    StringTools.PadNumber = function (num, length) {
-        var str = String(num);
-        while (str.length < length) {
-            str = "0" + str;
-        }
-        return str;
-    };
-    return StringTools;
-}());
+        output += keyStr.charAt(enc1) + keyStr.charAt(enc2) +
+            keyStr.charAt(enc3) + keyStr.charAt(enc4);
+    }
+    return output;
+};
+/**
+ * Converts a given base64 string as an ASCII encoded stream of data
+ * @param base64Data The base64 encoded string to decode
+ * @returns Decoded ASCII string
+ */
+var DecodeBase64ToString = function (base64Data) {
+    return atob(base64Data);
+};
+/**
+ * Converts a given base64 string into an ArrayBuffer of raw byte data
+ * @param base64Data The base64 encoded string to decode
+ * @returns ArrayBuffer of byte data
+ */
+var DecodeBase64ToBinary = function (base64Data) {
+    var decodedString = DecodeBase64ToString(base64Data);
+    var bufferLength = decodedString.length;
+    var bufferView = new Uint8Array(new ArrayBuffer(bufferLength));
+    for (var i = 0; i < bufferLength; i++) {
+        bufferView[i] = decodedString.charCodeAt(i);
+    }
+    return bufferView.buffer;
+};
 
 var cloneValue = function (source, destinationObject) {
     if (!source) {
@@ -9048,7 +9090,7 @@ var DeepCopier = /** @class */ (function () {
             if (prop[0] === "_" && (!mustCopyList || mustCopyList.indexOf(prop) === -1)) {
                 continue;
             }
-            if (StringTools.EndsWith(prop, "Observable")) {
+            if (EndsWith(prop, "Observable")) {
                 continue;
             }
             if (doNotCopyList && doNotCopyList.indexOf(prop) !== -1) {
@@ -9117,14 +9159,9 @@ var PrecisionDate = /** @class */ (function () {
 }());
 
 /** @hidden */
-var _DevTools = /** @class */ (function () {
-    function _DevTools() {
-    }
-    _DevTools.WarnImport = function (name) {
-        return name + " needs to be imported before as it contains a side-effect required by your code.";
-    };
-    return _DevTools;
-}());
+function _WarnImport(name) {
+    return name + " needs to be imported before as it contains a side-effect required by your code.";
+}
 
 /** @hidden */
 function createXMLHttpRequest() {
@@ -9435,10 +9472,10 @@ var ShaderCodeNode = /** @class */ (function () {
                 if (processor.lineProcessor) {
                     value = processor.lineProcessor(value, options.isFragment, options.processingContext);
                 }
-                if (processor.attributeProcessor && StringTools.StartsWith(this.line, "attribute")) {
+                if (processor.attributeProcessor && StartsWith(this.line, "attribute")) {
                     value = processor.attributeProcessor(this.line, preprocessors, options.processingContext);
                 }
-                else if (processor.varyingProcessor && StringTools.StartsWith(this.line, "varying")) {
+                else if (processor.varyingProcessor && StartsWith(this.line, "varying")) {
                     value = processor.varyingProcessor(this.line, options.isFragment, preprocessors, options.processingContext);
                 }
                 else if (processor.uniformProcessor && processor.uniformRegexp && processor.uniformRegexp.test(this.line)) {
@@ -9455,7 +9492,7 @@ var ShaderCodeNode = /** @class */ (function () {
                 else if (processor.textureProcessor && processor.textureRegexp && processor.textureRegexp.test(this.line)) {
                     value = processor.textureProcessor(this.line, options.isFragment, preprocessors, options.processingContext);
                 }
-                else if ((processor.uniformProcessor || processor.uniformBufferProcessor) && StringTools.StartsWith(this.line, "uniform") && !options.lookForClosingBracketForUniformBuffer) {
+                else if ((processor.uniformProcessor || processor.uniformBufferProcessor) && StartsWith(this.line, "uniform") && !options.lookForClosingBracketForUniformBuffer) {
                     var regex = /uniform\s+(?:(?:highp)?|(?:lowp)?)\s*(\S+)\s+(\S+)\s*;/;
                     if (regex.test(this.line)) { // uniform
                         if (processor.uniformProcessor) {
@@ -10119,7 +10156,7 @@ var ShaderProcessor = /** @class */ (function () {
      * @hidden
      */
     ShaderProcessor._FileToolsLoadFile = function (url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError) {
-        throw _DevTools.WarnImport("FileTools");
+        throw _WarnImport("FileTools");
     };
     return ShaderProcessor;
 }());
@@ -10329,7 +10366,7 @@ var Effect = /** @class */ (function () {
         this.uniqueId = Effect._uniqueIdSeed++;
         var vertexSource;
         var fragmentSource;
-        var hostDocument = DomManagement.IsWindowObjectExist() ? this._engine.getHostDocument() : null;
+        var hostDocument = IsWindowObjectExist() ? this._engine.getHostDocument() : null;
         if (baseName.vertexSource) {
             vertexSource = "source:" + baseName.vertexSource;
         }
@@ -10611,7 +10648,7 @@ var Effect = /** @class */ (function () {
         if (typeof (HTMLElement) !== "undefined") {
             // DOM element ?
             if (shader instanceof HTMLElement) {
-                var shaderCode = DomManagement.GetDOMTextContent(shader);
+                var shaderCode = GetDOMTextContent(shader);
                 callback(shaderCode);
                 return;
             }
@@ -11672,7 +11709,7 @@ var AlphaState = /** @class */ (function () {
     }
     Object.defineProperty(AlphaState.prototype, "isDirty", {
         get: function () {
-            return this._isAlphaBlendDirty || this._isBlendFunctionParametersDirty;
+            return this._isAlphaBlendDirty || this._isBlendFunctionParametersDirty || this._isBlendEquationParametersDirty;
         },
         enumerable: false,
         configurable: true
@@ -12061,6 +12098,14 @@ var InternalTexture = /** @class */ (function (_super) {
          */
         _this.onLoadedObservable = new Observable();
         /**
+         * Observable called when the texture load is raising an error
+         */
+        _this.onErrorObservable = new Observable();
+        /**
+         * If this callback is defined it will be called instead of the default _rebuild function
+         */
+        _this.onRebuildCallback = null;
+        /**
          * Gets the width of the texture
          */
         _this.width = 0;
@@ -12226,13 +12271,27 @@ var InternalTexture = /** @class */ (function (_super) {
     InternalTexture.prototype._rebuild = function () {
         var _this = this;
         var _a;
-        var proxy;
         this.isReady = false;
         this._cachedCoordinatesMode = null;
         this._cachedWrapU = null;
         this._cachedWrapV = null;
         this._cachedWrapR = null;
         this._cachedAnisotropicFilteringLevel = null;
+        if (this.onRebuildCallback) {
+            var data_1 = this.onRebuildCallback(this);
+            var swapAndSetIsReady = function (proxyInternalTexture) {
+                proxyInternalTexture._swapAndDie(_this, false);
+                _this.isReady = data_1.isReady;
+            };
+            if (data_1.isAsync) {
+                data_1.proxy.then(swapAndSetIsReady);
+            }
+            else {
+                swapAndSetIsReady(data_1.proxy);
+            }
+            return;
+        }
+        var proxy;
         switch (this.source) {
             case InternalTextureSource.Temp:
                 break;
@@ -12275,11 +12334,8 @@ var InternalTexture = /** @class */ (function (_super) {
                 this.isReady = true;
                 break;
             case InternalTextureSource.CubeRawRGBD:
-                proxy = this._engine.createRawCubeTexture(null, this.width, this.format, this.type, this.generateMipMaps, this.invertY, this.samplingMode, this._compression);
-                InternalTexture._UpdateRGBDAsync(proxy, this._bufferViewArrayArray, this._sphericalPolynomial, this._lodGenerationScale, this._lodGenerationOffset).then(function () {
-                    proxy._swapAndDie(_this, false);
-                    _this.isReady = true;
-                });
+                // This case is being handeled by the environment texture tools and is not a part of the rebuild process.
+                // To use CubeRawRGBD use updateRGBDAsync on the cube texture.
                 return;
             case InternalTextureSource.CubePrefiltered:
                 proxy = this._engine.createPrefilteredCubeTexture(this.url, null, this._lodGenerationScale, this._lodGenerationOffset, function (proxy) {
@@ -12341,14 +12397,12 @@ var InternalTexture = /** @class */ (function (_super) {
      */
     InternalTexture.prototype.dispose = function () {
         this._references--;
+        this.onLoadedObservable.clear();
+        this.onErrorObservable.clear();
         if (this._references === 0) {
             this._engine._releaseTexture(this);
             this._hardwareTexture = null;
         }
-    };
-    /** @hidden */
-    InternalTexture._UpdateRGBDAsync = function (internalTexture, data, sphericalPolynomial, lodScale, lodOffset) {
-        throw _DevTools.WarnImport("environmentTextureTools");
     };
     /** @hidden */
     InternalTexture._Counter = 0;
@@ -13014,11 +13068,20 @@ var DrawWrapper = /** @class */ (function () {
     DrawWrapper.GetEffect = function (effect) {
         return effect.getPipelineContext === undefined ? effect.effect : effect;
     };
-    DrawWrapper.prototype.setEffect = function (effect, defines) {
+    DrawWrapper.prototype.setEffect = function (effect, defines, resetContext) {
+        var _a;
+        if (resetContext === void 0) { resetContext = true; }
         this.effect = effect;
         if (defines !== undefined) {
             this.defines = defines;
         }
+        if (resetContext) {
+            (_a = this.drawContext) === null || _a === void 0 ? void 0 : _a.reset();
+        }
+    };
+    DrawWrapper.prototype.dispose = function () {
+        var _a;
+        (_a = this.drawContext) === null || _a === void 0 ? void 0 : _a.dispose();
     };
     return DrawWrapper;
 }());
@@ -13365,7 +13428,6 @@ var ThinEngine = /** @class */ (function () {
         this.onBeforeTextureInitObservable = new Observable();
         /** @hidden */
         this._isWebGPU = false;
-        this._snapshotRenderingEnabled = false;
         this._snapshotRenderingMode = 0;
         this._viewportCached = { x: 0, y: 0, z: 0, w: 0 };
         this._unpackFlipYCached = null;
@@ -13428,12 +13490,12 @@ var ThinEngine = /** @class */ (function () {
                     var currentUA = navigator.userAgent;
                     _this.hostInformation.isMobile = currentUA.indexOf("Mobile") !== -1 ||
                         // Needed for iOS 13+ detection on iPad (inspired by solution from https://stackoverflow.com/questions/9038625/detect-if-device-is-ios)
-                        (currentUA.indexOf("Mac") !== -1 && document !== undefined && "ontouchend" in document);
+                        (currentUA.indexOf("Mac") !== -1 && IsDocumentAvailable() && "ontouchend" in document);
                 };
                 // Set initial isMobile value
                 this._checkForMobile();
                 // Set up event listener to check when window is resized (used to get emulator activation to work properly)
-                if (DomManagement.IsWindowObjectExist()) {
+                if (IsWindowObjectExist()) {
                     window.addEventListener("resize", this._checkForMobile);
                 }
                 var ua = navigator.userAgent;
@@ -13543,7 +13605,7 @@ var ThinEngine = /** @class */ (function () {
             this._highPrecisionShadersAllowed = options.useHighPrecisionFloats;
         }
         // Viewport
-        var devicePixelRatio = DomManagement.IsWindowObjectExist() ? (window.devicePixelRatio || 1.0) : 1.0;
+        var devicePixelRatio = IsWindowObjectExist() ? (window.devicePixelRatio || 1.0) : 1.0;
         var limitDeviceRatio = options.limitDeviceRatio || devicePixelRatio;
         this._hardwareScalingLevel = adaptToDeviceRatio ? 1.0 / Math.min(limitDeviceRatio, devicePixelRatio) : 1.0;
         this.resize();
@@ -13566,7 +13628,12 @@ var ThinEngine = /** @class */ (function () {
         //     }
         // }
         this._creationOptions = options;
-        console.log("Babylon.js v" + ThinEngine.Version + " - " + this.description);
+        var versionToLog = "Babylon.js v" + ThinEngine.Version;
+        console.log(versionToLog + (" - " + this.description));
+        // Check setAttribute in case of workers
+        if (this._renderingCanvas && this._renderingCanvas.setAttribute) {
+            this._renderingCanvas.setAttribute('data-engine', versionToLog);
+        }
     }
     Object.defineProperty(ThinEngine, "NpmPackage", {
         /**
@@ -13574,7 +13641,7 @@ var ThinEngine = /** @class */ (function () {
          */
         // Not mixed with Version for tooling purpose.
         get: function () {
-            return "babylonjs@5.0.0-alpha.48";
+            return "babylonjs@5.0.0-alpha.62";
         },
         enumerable: false,
         configurable: true
@@ -13584,7 +13651,7 @@ var ThinEngine = /** @class */ (function () {
          * Returns the current version of the framework
          */
         get: function () {
-            return "5.0.0-alpha.48";
+            return "5.0.0-alpha.62";
         },
         enumerable: false,
         configurable: true
@@ -13837,11 +13904,10 @@ var ThinEngine = /** @class */ (function () {
          * Note that the WebGL engine does not support snapshot rendering so setting the value won't have any effect for this engine
          */
         get: function () {
-            return this._snapshotRenderingEnabled;
+            return false;
         },
         set: function (activate) {
             // WebGL engine does not support snapshot rendering
-            this._snapshotRenderingEnabled = false;
         },
         enumerable: false,
         configurable: true
@@ -14223,6 +14289,8 @@ var ThinEngine = /** @class */ (function () {
             needsInvertingBitmap: true,
             useUBOBindingCache: true,
             needShaderCodeInlining: false,
+            needToAlwaysBindUniformBuffers: false,
+            supportRenderPasses: false,
             _collectUbosUpdatedInFrame: false,
         };
     };
@@ -14393,7 +14461,7 @@ var ThinEngine = /** @class */ (function () {
      * @returns the host window object
      */
     ThinEngine.prototype.getHostWindow = function () {
-        if (!DomManagement.IsWindowObjectExist()) {
+        if (!IsWindowObjectExist()) {
             return null;
         }
         if (this._renderingCanvas && this._renderingCanvas.ownerDocument && this._renderingCanvas.ownerDocument.defaultView) {
@@ -14531,7 +14599,7 @@ var ThinEngine = /** @class */ (function () {
         if (forceSetSize === void 0) { forceSetSize = false; }
         var width;
         var height;
-        if (DomManagement.IsWindowObjectExist()) {
+        if (IsWindowObjectExist()) {
             width = this._renderingCanvas ? (this._renderingCanvas.clientWidth || this._renderingCanvas.width) : window.innerWidth;
             height = this._renderingCanvas ? (this._renderingCanvas.clientHeight || this._renderingCanvas.height) : window.innerHeight;
         }
@@ -14785,10 +14853,10 @@ var ThinEngine = /** @class */ (function () {
         var dataBuffer = new WebGLDataBuffer(vbo);
         this.bindArrayBuffer(dataBuffer);
         if (data instanceof Array) {
-            this._gl.bufferData(this._gl.ARRAY_BUFFER, new Float32Array(data), this._gl.STATIC_DRAW);
+            this._gl.bufferData(this._gl.ARRAY_BUFFER, new Float32Array(data), usage);
         }
         else {
-            this._gl.bufferData(this._gl.ARRAY_BUFFER, data, this._gl.STATIC_DRAW);
+            this._gl.bufferData(this._gl.ARRAY_BUFFER, data, usage);
         }
         this._resetVertexBufferBinding();
         dataBuffer.references = 1;
@@ -14827,7 +14895,8 @@ var ThinEngine = /** @class */ (function () {
         return dataBuffer;
     };
     ThinEngine.prototype._normalizeIndexData = function (indices) {
-        if (indices instanceof Uint16Array) {
+        var bytesPerElement = indices.BYTES_PER_ELEMENT;
+        if (bytesPerElement === 2) {
             return indices;
         }
         // Check 32 bit support
@@ -15314,7 +15383,10 @@ var ThinEngine = /** @class */ (function () {
     ThinEngine.prototype._releaseEffect = function (effect) {
         if (this._compiledEffects[effect._key]) {
             delete this._compiledEffects[effect._key];
-            this._deletePipelineContext(effect.getPipelineContext());
+            var pipelineContext = effect.getPipelineContext();
+            if (pipelineContext) {
+                this._deletePipelineContext(pipelineContext);
+            }
         }
     };
     /** @hidden */
@@ -16133,6 +16205,84 @@ var ThinEngine = /** @class */ (function () {
     ThinEngine.prototype._createHardwareTexture = function () {
         return new WebGLHardwareTexture(this._createTexture(), this._gl);
     };
+    /**
+     * Creates an internal texture without binding it to a framebuffer
+     * @hidden
+     * @param size defines the size of the texture
+     * @param options defines the options used to create the texture
+     * @param delayGPUTextureCreation true to delay the texture creation the first time it is really needed. false to create it right away
+     * @param source source type of the texture
+     * @returns a new render target texture stored in an InternalTexture
+     */
+    ThinEngine.prototype._createInternalTexture = function (size, options, delayGPUTextureCreation, source) {
+        if (source === void 0) { source = InternalTextureSource.Unknown; }
+        var fullOptions = {};
+        if (options !== undefined && typeof options === "object") {
+            fullOptions.generateMipMaps = options.generateMipMaps;
+            fullOptions.type = options.type === undefined ? 0 : options.type;
+            fullOptions.samplingMode = options.samplingMode === undefined ? 3 : options.samplingMode;
+            fullOptions.format = options.format === undefined ? 5 : options.format;
+        }
+        else {
+            fullOptions.generateMipMaps = options;
+            fullOptions.type = 0;
+            fullOptions.samplingMode = 3;
+            fullOptions.format = 5;
+        }
+        if (fullOptions.type === 1 && !this._caps.textureFloatLinearFiltering) {
+            // if floating point linear (gl.FLOAT) then force to NEAREST_SAMPLINGMODE
+            fullOptions.samplingMode = 1;
+        }
+        else if (fullOptions.type === 2 && !this._caps.textureHalfFloatLinearFiltering) {
+            // if floating point linear (HALF_FLOAT) then force to NEAREST_SAMPLINGMODE
+            fullOptions.samplingMode = 1;
+        }
+        if (fullOptions.type === 1 && !this._caps.textureFloat) {
+            fullOptions.type = 0;
+            Logger.Warn("Float textures are not supported. Type forced to TEXTURETYPE_UNSIGNED_BYTE");
+        }
+        var gl = this._gl;
+        var texture = new InternalTexture(this, source);
+        var width = size.width || size;
+        var height = size.height || size;
+        var layers = size.layers || 0;
+        var filters = this._getSamplingParameters(fullOptions.samplingMode, fullOptions.generateMipMaps ? true : false);
+        var target = layers !== 0 ? gl.TEXTURE_2D_ARRAY : gl.TEXTURE_2D;
+        var sizedFormat = this._getRGBABufferInternalSizedFormat(fullOptions.type, fullOptions.format);
+        var internalFormat = this._getInternalFormat(fullOptions.format);
+        var type = this._getWebGLTextureType(fullOptions.type);
+        // Bind
+        this._bindTextureDirectly(target, texture);
+        if (layers !== 0) {
+            texture.is2DArray = true;
+            gl.texImage3D(target, 0, sizedFormat, width, height, layers, 0, internalFormat, type, null);
+        }
+        else {
+            gl.texImage2D(target, 0, sizedFormat, width, height, 0, internalFormat, type, null);
+        }
+        gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, filters.mag);
+        gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, filters.min);
+        gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // MipMaps
+        if (fullOptions.generateMipMaps) {
+            this._gl.generateMipmap(target);
+        }
+        this._bindTextureDirectly(target, null);
+        texture.baseWidth = width;
+        texture.baseHeight = height;
+        texture.width = width;
+        texture.height = height;
+        texture.depth = layers;
+        texture.isReady = true;
+        texture.samples = 1;
+        texture.generateMipMaps = fullOptions.generateMipMaps ? true : false;
+        texture.samplingMode = fullOptions.samplingMode;
+        texture.type = fullOptions.type;
+        texture.format = fullOptions.format;
+        this._internalTexturesCache.push(texture);
+        return texture;
+    };
     /** @hidden */
     ThinEngine.prototype._getUseSRGBBuffer = function (useSRGBBuffer, noMipmap) {
         // Generating mipmaps for sRGB textures is not supported in WebGL1 so we must disable the support if mipmaps is enabled
@@ -16205,8 +16355,10 @@ var ThinEngine = /** @class */ (function () {
                 if (EngineStore.UseFallbackTexture) {
                     _this._createTextureBase(EngineStore.FallbackTexture, noMipmap, texture.invertY, scene, samplingMode, null, onError, prepareTexture, prepareTextureProcessFunction, buffer, texture);
                 }
+                message = (message || "Unknown error") + (EngineStore.UseFallbackTexture ? " - Fallback texture was used" : "");
+                texture.onErrorObservable.notifyObservers({ message: message, exception: exception });
                 if (onError) {
-                    onError((message || "Unknown error") + (EngineStore.UseFallbackTexture ? " - Fallback texture was used" : ""), exception);
+                    onError(message, exception);
                 }
             }
             else {
@@ -16363,7 +16515,7 @@ var ThinEngine = /** @class */ (function () {
      * @hidden
      */
     ThinEngine._FileToolsLoadImage = function (input, onLoad, onError, offlineProvider, mimeType, imageBitmapOptions) {
-        throw _DevTools.WarnImport("FileTools");
+        throw _WarnImport("FileTools");
     };
     /**
      * @hidden
@@ -16384,7 +16536,7 @@ var ThinEngine = /** @class */ (function () {
      * @returns the raw texture inside an InternalTexture
      */
     ThinEngine.prototype.createRawTexture = function (data, width, height, format, generateMipMaps, invertY, samplingMode, compression, type) {
-        throw _DevTools.WarnImport("Engine.RawTexture");
+        throw _WarnImport("Engine.RawTexture");
     };
     /**
      * Creates a new raw cube texture
@@ -16399,7 +16551,7 @@ var ThinEngine = /** @class */ (function () {
      * @returns the cube texture as an InternalTexture
      */
     ThinEngine.prototype.createRawCubeTexture = function (data, size, format, type, generateMipMaps, invertY, samplingMode, compression) {
-        throw _DevTools.WarnImport("Engine.RawTexture");
+        throw _WarnImport("Engine.RawTexture");
     };
     /**
      * Creates a new raw 3D texture
@@ -16416,7 +16568,7 @@ var ThinEngine = /** @class */ (function () {
      * @returns a new raw 3D texture (stored in an InternalTexture)
      */
     ThinEngine.prototype.createRawTexture3D = function (data, width, height, depth, format, generateMipMaps, invertY, samplingMode, compression, textureType) {
-        throw _DevTools.WarnImport("Engine.RawTexture");
+        throw _WarnImport("Engine.RawTexture");
     };
     /**
      * Creates a new raw 2D array texture
@@ -16433,7 +16585,7 @@ var ThinEngine = /** @class */ (function () {
      * @returns a new raw 2D array texture (stored in an InternalTexture)
      */
     ThinEngine.prototype.createRawTexture2DArray = function (data, width, height, depth, format, generateMipMaps, invertY, samplingMode, compression, textureType) {
-        throw _DevTools.WarnImport("Engine.RawTexture");
+        throw _WarnImport("Engine.RawTexture");
     };
     /** @hidden */
     ThinEngine.prototype._unpackFlipY = function (value) {
@@ -17086,7 +17238,7 @@ var ThinEngine = /** @class */ (function () {
         this.unbindAllAttributes();
         this._boundUniforms = [];
         // Events
-        if (DomManagement.IsWindowObjectExist()) {
+        if (IsWindowObjectExist()) {
             if (this._renderingCanvas) {
                 if (!this._doNotHandleContextLost) {
                     this._renderingCanvas.removeEventListener("webglcontextlost", this._onContextLost);
@@ -17485,7 +17637,7 @@ var ThinEngine = /** @class */ (function () {
      * @hidden
      */
     ThinEngine._FileToolsLoadFile = function (url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError) {
-        throw _DevTools.WarnImport("FileTools");
+        throw _WarnImport("FileTools");
     };
     /**
      * Reads pixels from the current frame buffer. Please note that this function can be slow
@@ -17639,7 +17791,7 @@ var ThinEngine = /** @class */ (function () {
      * @returns frame number
      */
     ThinEngine.QueueNewFrame = function (func, requester) {
-        if (!DomManagement.IsWindowObjectExist()) {
+        if (!IsWindowObjectExist()) {
             if (typeof requestAnimationFrame !== "undefined") {
                 return requestAnimationFrame(func);
             }
@@ -17680,38 +17832,6 @@ var ThinEngine = /** @class */ (function () {
         }
         return document;
     };
-    /**
-     * Get Font size information
-     * @param font font name
-     * @return an object containing ascent, height and descent
-     */
-    ThinEngine.prototype.getFontOffset = function (font) {
-        var text = document.createElement("span");
-        text.innerHTML = "Hg";
-        text.setAttribute('style', "font: " + font + " !important");
-        var block = document.createElement("div");
-        block.style.display = "inline-block";
-        block.style.width = "1px";
-        block.style.height = "0px";
-        block.style.verticalAlign = "bottom";
-        var div = document.createElement("div");
-        div.style.whiteSpace = "nowrap";
-        div.appendChild(text);
-        div.appendChild(block);
-        document.body.appendChild(div);
-        var fontAscent = 0;
-        var fontHeight = 0;
-        try {
-            fontHeight = block.getBoundingClientRect().top - text.getBoundingClientRect().top;
-            block.style.verticalAlign = "baseline";
-            fontAscent = block.getBoundingClientRect().top - text.getBoundingClientRect().top;
-        }
-        finally {
-            document.body.removeChild(div);
-        }
-        var result = { ascent: fontAscent, height: fontHeight, descent: fontHeight - fontAscent };
-        return result;
-    };
     /** Use this array to turn off some WebGL2 features on known buggy browsers version */
     ThinEngine.ExceptionList = [
         { key: "Chrome\/63\.0", capture: "63\\.0\\.3239\\.(\\d+)", captureConstraint: 108, targets: ["uniformBuffer"] },
@@ -17747,7 +17867,7 @@ var TimingTools = /** @class */ (function () {
      * @param action defines the action to execute after the current execution block
      */
     TimingTools.SetImmediate = function (action) {
-        if (DomManagement.IsWindowObjectExist() && window.setImmediate) {
+        if (IsWindowObjectExist() && window.setImmediate) {
             window.setImmediate(action);
         }
         else {
@@ -17756,6 +17876,69 @@ var TimingTools = /** @class */ (function () {
     };
     return TimingTools;
 }());
+
+/**
+ * FileTools defined as any.
+ * This should not be imported or used in future releases or in any module in the framework
+ * @hidden
+ * @deprecated import the needed function from fileTools.ts
+ */
+var FileTools;
+/** @hidden */
+var _injectLTSFileTools = function (DecodeBase64UrlToBinary, DecodeBase64UrlToString, FileToolsOptions, IsBase64DataUrl, IsFileURL, LoadFile, LoadImage, ReadFile, RequestFile, SetCorsBehavior) {
+    /**
+ * Backwards compatibility.
+ * @hidden
+ * @deprecated
+ */
+    FileTools = {
+        DecodeBase64UrlToBinary: DecodeBase64UrlToBinary,
+        DecodeBase64UrlToString: DecodeBase64UrlToString,
+        DefaultRetryStrategy: FileToolsOptions.DefaultRetryStrategy,
+        BaseUrl: FileToolsOptions.BaseUrl,
+        CorsBehavior: FileToolsOptions.CorsBehavior,
+        PreprocessUrl: FileToolsOptions.PreprocessUrl,
+        IsBase64DataUrl: IsBase64DataUrl,
+        IsFileURL: IsFileURL,
+        LoadFile: LoadFile,
+        LoadImage: LoadImage,
+        ReadFile: ReadFile,
+        RequestFile: RequestFile,
+        SetCorsBehavior: SetCorsBehavior,
+    };
+    Object.defineProperty(FileTools, "DefaultRetryStrategy", {
+        get: function () {
+            return FileToolsOptions.DefaultRetryStrategy;
+        },
+        set: function (value) {
+            FileToolsOptions.DefaultRetryStrategy = value;
+        }
+    });
+    Object.defineProperty(FileTools, "BaseUrl", {
+        get: function () {
+            return FileToolsOptions.BaseUrl;
+        },
+        set: function (value) {
+            FileToolsOptions.BaseUrl = value;
+        }
+    });
+    Object.defineProperty(FileTools, "PreprocessUrl", {
+        get: function () {
+            return FileToolsOptions.PreprocessUrl;
+        },
+        set: function (value) {
+            FileToolsOptions.PreprocessUrl = value;
+        }
+    });
+    Object.defineProperty(FileTools, "CorsBehavior", {
+        get: function () {
+            return FileToolsOptions.CorsBehavior;
+        },
+        set: function (value) {
+            FileToolsOptions.CorsBehavior = value;
+        }
+    });
+};
 
 var base64DataUrlRegEx = new RegExp(/^data:([^,]+\/[^,]+)?;base64,/i);
 /** @ignore */
@@ -17818,440 +18001,456 @@ var ReadFileError = /** @class */ (function (_super) {
 /**
  * @hidden
  */
-var FileTools = /** @class */ (function () {
-    function FileTools() {
-    }
-    /**
-     * Removes unwanted characters from an url
-     * @param url defines the url to clean
-     * @returns the cleaned url
-     */
-    FileTools._CleanUrl = function (url) {
-        url = url.replace(/#/mg, "%23");
-        return url;
-    };
-    /**
-     * Sets the cors behavior on a dom element. This will add the required Tools.CorsBehavior to the element.
-     * @param url define the url we are trying
-     * @param element define the dom element where to configure the cors policy
-     */
-    FileTools.SetCorsBehavior = function (url, element) {
-        if (url && url.indexOf("data:") === 0) {
-            return;
-        }
-        if (FileTools.CorsBehavior) {
-            if (typeof (FileTools.CorsBehavior) === 'string' || this.CorsBehavior instanceof String) {
-                element.crossOrigin = FileTools.CorsBehavior;
-            }
-            else {
-                var result = FileTools.CorsBehavior(url);
-                if (result) {
-                    element.crossOrigin = result;
-                }
-            }
-        }
-    };
-    /**
-     * Loads an image as an HTMLImageElement.
-     * @param input url string, ArrayBuffer, or Blob to load
-     * @param onLoad callback called when the image successfully loads
-     * @param onError callback called when the image fails to load
-     * @param offlineProvider offline provider for caching
-     * @param mimeType optional mime type
-     * @param imageBitmapOptions optional the options to use when creating an ImageBitmap
-     * @returns the HTMLImageElement of the loaded image
-     */
-    FileTools.LoadImage = function (input, onLoad, onError, offlineProvider, mimeType, imageBitmapOptions) {
-        var _a;
-        if (mimeType === void 0) { mimeType = ""; }
-        var url;
-        var usingObjectURL = false;
-        if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
-            if (typeof Blob !== 'undefined') {
-                url = URL.createObjectURL(new Blob([input], { type: mimeType }));
-                usingObjectURL = true;
-            }
-            else {
-                url = "data:" + mimeType + ";base64," + StringTools.EncodeArrayBufferToBase64(input);
-            }
-        }
-        else if (input instanceof Blob) {
-            url = URL.createObjectURL(input);
-            usingObjectURL = true;
-        }
-        else {
-            url = FileTools._CleanUrl(input);
-            url = FileTools.PreprocessUrl(input);
-        }
-        var engine = EngineStore.LastCreatedEngine;
-        if (typeof Image === "undefined" || ((_a = engine === null || engine === void 0 ? void 0 : engine._features.forceBitmapOverHTMLImageElement) !== null && _a !== void 0 ? _a : false)) {
-            FileTools.LoadFile(url, function (data) {
-                engine.createImageBitmap(new Blob([data], { type: mimeType }), __assign({ premultiplyAlpha: "none" }, imageBitmapOptions)).then(function (imgBmp) {
-                    onLoad(imgBmp);
-                    if (usingObjectURL) {
-                        URL.revokeObjectURL(url);
-                    }
-                }).catch(function (reason) {
-                    if (onError) {
-                        onError("Error while trying to load image: " + input, reason);
-                    }
-                });
-            }, undefined, offlineProvider || undefined, true, function (request, exception) {
-                if (onError) {
-                    onError("Error while trying to load image: " + input, exception);
-                }
-            });
-            return null;
-        }
-        var img = new Image();
-        FileTools.SetCorsBehavior(url, img);
-        var loadHandler = function () {
-            img.removeEventListener("load", loadHandler);
-            img.removeEventListener("error", errorHandler);
-            onLoad(img);
-            // Must revoke the URL after calling onLoad to avoid security exceptions in
-            // certain scenarios (e.g. when hosted in vscode).
-            if (usingObjectURL && img.src) {
-                URL.revokeObjectURL(img.src);
-            }
-        };
-        var errorHandler = function (err) {
-            img.removeEventListener("load", loadHandler);
-            img.removeEventListener("error", errorHandler);
-            if (onError) {
-                var inputText = input.toString();
-                onError("Error while trying to load image: " + (inputText.length < 32 ? inputText : inputText.slice(0, 32) + "..."), err);
-            }
-            if (usingObjectURL && img.src) {
-                URL.revokeObjectURL(img.src);
-            }
-        };
-        img.addEventListener("load", loadHandler);
-        img.addEventListener("error", errorHandler);
-        var noOfflineSupport = function () {
-            img.src = url;
-        };
-        var loadFromOfflineSupport = function () {
-            if (offlineProvider) {
-                offlineProvider.loadImage(url, img);
-            }
-        };
-        if (url.substr(0, 5) !== "data:" && offlineProvider && offlineProvider.enableTexturesOffline) {
-            offlineProvider.open(loadFromOfflineSupport, noOfflineSupport);
-        }
-        else {
-            if (url.indexOf("file:") !== -1) {
-                var textureName = decodeURIComponent(url.substring(5).toLowerCase());
-                if (FilesInputStore.FilesToLoad[textureName]) {
-                    try {
-                        var blobURL;
-                        try {
-                            blobURL = URL.createObjectURL(FilesInputStore.FilesToLoad[textureName]);
-                        }
-                        catch (ex) {
-                            // Chrome doesn't support oneTimeOnly parameter
-                            blobURL = URL.createObjectURL(FilesInputStore.FilesToLoad[textureName]);
-                        }
-                        img.src = blobURL;
-                        usingObjectURL = true;
-                    }
-                    catch (e) {
-                        img.src = "";
-                    }
-                    return img;
-                }
-            }
-            noOfflineSupport();
-        }
-        return img;
-    };
-    /**
-     * Reads a file from a File object
-     * @param file defines the file to load
-     * @param onSuccess defines the callback to call when data is loaded
-     * @param onProgress defines the callback to call during loading process
-     * @param useArrayBuffer defines a boolean indicating that data must be returned as an ArrayBuffer
-     * @param onError defines the callback to call when an error occurs
-     * @returns a file request object
-     */
-    FileTools.ReadFile = function (file, onSuccess, onProgress, useArrayBuffer, onError) {
-        var reader = new FileReader();
-        var fileRequest = {
-            onCompleteObservable: new Observable(),
-            abort: function () { return reader.abort(); },
-        };
-        reader.onloadend = function (e) { return fileRequest.onCompleteObservable.notifyObservers(fileRequest); };
-        if (onError) {
-            reader.onerror = function (e) {
-                onError(new ReadFileError("Unable to read " + file.name, file));
-            };
-        }
-        reader.onload = function (e) {
-            //target doesn't have result from ts 1.3
-            onSuccess(e.target['result']);
-        };
-        if (onProgress) {
-            reader.onprogress = onProgress;
-        }
-        if (!useArrayBuffer) {
-            // Asynchronous read
-            reader.readAsText(file);
-        }
-        else {
-            reader.readAsArrayBuffer(file);
-        }
-        return fileRequest;
-    };
-    /**
-     * Loads a file from a url, a data url, or a file url
-     * @param fileOrUrl file, url, data url, or file url to load
-     * @param onSuccess callback called when the file successfully loads
-     * @param onProgress callback called while file is loading (if the server supports this mode)
-     * @param offlineProvider defines the offline provider for caching
-     * @param useArrayBuffer defines a boolean indicating that date must be returned as ArrayBuffer
-     * @param onError callback called when the file fails to load
-     * @returns a file request object
-     */
-    FileTools.LoadFile = function (fileOrUrl, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError, onOpened) {
-        if (fileOrUrl.name) {
-            return FileTools.ReadFile(fileOrUrl, onSuccess, onProgress, useArrayBuffer, onError ? function (error) {
-                onError(undefined, error);
-            } : undefined);
-        }
-        var url = fileOrUrl;
-        // If file and file input are set
-        if (url.indexOf("file:") !== -1) {
-            var fileName = decodeURIComponent(url.substring(5).toLowerCase());
-            if (fileName.indexOf('./') === 0) {
-                fileName = fileName.substring(2);
-            }
-            var file = FilesInputStore.FilesToLoad[fileName];
-            if (file) {
-                return FileTools.ReadFile(file, onSuccess, onProgress, useArrayBuffer, onError ? function (error) { return onError(undefined, new LoadFileError(error.message, error.file)); } : undefined);
-            }
-        }
-        // For a Base64 Data URL
-        if (FileTools.IsBase64DataUrl(url)) {
-            var fileRequest_1 = {
-                onCompleteObservable: new Observable(),
-                abort: function () { return function () { }; },
-            };
-            try {
-                onSuccess(useArrayBuffer ? FileTools.DecodeBase64UrlToBinary(url) : FileTools.DecodeBase64UrlToString(url));
-            }
-            catch (error) {
-                if (onError) {
-                    onError(undefined, error);
-                }
-                else {
-                    Logger.Error(error.message || "Failed to parse the Data URL");
-                }
-            }
-            TimingTools.SetImmediate(function () {
-                fileRequest_1.onCompleteObservable.notifyObservers(fileRequest_1);
-            });
-            return fileRequest_1;
-        }
-        return FileTools.RequestFile(url, function (data, request) {
-            onSuccess(data, request ? request.responseURL : undefined);
-        }, onProgress, offlineProvider, useArrayBuffer, onError ? function (error) {
-            onError(error.request, new LoadFileError(error.message, error.request));
-        } : undefined, onOpened);
-    };
-    /**
-     * Loads a file from a url
-     * @param url url to load
-     * @param onSuccess callback called when the file successfully loads
-     * @param onProgress callback called while file is loading (if the server supports this mode)
-     * @param offlineProvider defines the offline provider for caching
-     * @param useArrayBuffer defines a boolean indicating that date must be returned as ArrayBuffer
-     * @param onError callback called when the file fails to load
-     * @param onOpened callback called when the web request is opened
-     * @returns a file request object
-     */
-    FileTools.RequestFile = function (url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError, onOpened) {
-        url = FileTools._CleanUrl(url);
-        url = FileTools.PreprocessUrl(url);
-        var loadUrl = FileTools.BaseUrl + url;
-        var aborted = false;
-        var fileRequest = {
-            onCompleteObservable: new Observable(),
-            abort: function () { return aborted = true; },
-        };
-        var requestFile = function () {
-            var request = new WebRequest();
-            var retryHandle = null;
-            fileRequest.abort = function () {
-                aborted = true;
-                if (request.readyState !== (XMLHttpRequest.DONE || 4)) {
-                    request.abort();
-                }
-                if (retryHandle !== null) {
-                    clearTimeout(retryHandle);
-                    retryHandle = null;
-                }
-            };
-            var handleError = function (error) {
-                var message = error.message || "Unknown error";
-                if (onError) {
-                    onError(new RequestFileError(message, request));
-                }
-                else {
-                    Logger.Error(message);
-                }
-            };
-            var retryLoop = function (retryIndex) {
-                request.open('GET', loadUrl);
-                if (onOpened) {
-                    try {
-                        onOpened(request);
-                    }
-                    catch (e) {
-                        handleError(e);
-                        return;
-                    }
-                }
-                if (useArrayBuffer) {
-                    request.responseType = "arraybuffer";
-                }
-                if (onProgress) {
-                    request.addEventListener("progress", onProgress);
-                }
-                var onLoadEnd = function () {
-                    request.removeEventListener("loadend", onLoadEnd);
-                    fileRequest.onCompleteObservable.notifyObservers(fileRequest);
-                    fileRequest.onCompleteObservable.clear();
-                };
-                request.addEventListener("loadend", onLoadEnd);
-                var onReadyStateChange = function () {
-                    if (aborted) {
-                        return;
-                    }
-                    // In case of undefined state in some browsers.
-                    if (request.readyState === (XMLHttpRequest.DONE || 4)) {
-                        // Some browsers have issues where onreadystatechange can be called multiple times with the same value.
-                        request.removeEventListener("readystatechange", onReadyStateChange);
-                        if ((request.status >= 200 && request.status < 300) || (request.status === 0 && (!DomManagement.IsWindowObjectExist() || FileTools.IsFileURL()))) {
-                            try {
-                                onSuccess(useArrayBuffer ? request.response : request.responseText, request);
-                            }
-                            catch (e) {
-                                handleError(e);
-                            }
-                            return;
-                        }
-                        var retryStrategy = FileTools.DefaultRetryStrategy;
-                        if (retryStrategy) {
-                            var waitTime = retryStrategy(loadUrl, request, retryIndex);
-                            if (waitTime !== -1) {
-                                // Prevent the request from completing for retry.
-                                request.removeEventListener("loadend", onLoadEnd);
-                                request = new WebRequest();
-                                retryHandle = setTimeout(function () { return retryLoop(retryIndex + 1); }, waitTime);
-                                return;
-                            }
-                        }
-                        var error = new RequestFileError("Error status: " + request.status + " " + request.statusText + " - Unable to load " + loadUrl, request);
-                        if (onError) {
-                            onError(error);
-                        }
-                    }
-                };
-                request.addEventListener("readystatechange", onReadyStateChange);
-                request.send();
-            };
-            retryLoop(0);
-        };
-        // Caching all files
-        if (offlineProvider && offlineProvider.enableSceneOffline) {
-            var noOfflineSupport_1 = function (request) {
-                if (request && request.status > 400) {
-                    if (onError) {
-                        onError(request);
-                    }
-                }
-                else {
-                    requestFile();
-                }
-            };
-            var loadFromOfflineSupport = function () {
-                // TODO: database needs to support aborting and should return a IFileRequest
-                if (offlineProvider) {
-                    offlineProvider.loadFile(FileTools.BaseUrl + url, function (data) {
-                        if (!aborted) {
-                            onSuccess(data);
-                        }
-                        fileRequest.onCompleteObservable.notifyObservers(fileRequest);
-                    }, onProgress ? function (event) {
-                        if (!aborted) {
-                            onProgress(event);
-                        }
-                    } : undefined, noOfflineSupport_1, useArrayBuffer);
-                }
-            };
-            offlineProvider.open(loadFromOfflineSupport, noOfflineSupport_1);
-        }
-        else {
-            requestFile();
-        }
-        return fileRequest;
-    };
-    /**
-     * Checks if the loaded document was accessed via `file:`-Protocol.
-     * @returns boolean
-     */
-    FileTools.IsFileURL = function () {
-        return typeof location !== "undefined" && location.protocol === "file:";
-    };
-    /**
-     * Test if the given uri is a valid base64 data url
-     * @param uri The uri to test
-     * @return True if the uri is a base64 data url or false otherwise
-     */
-    FileTools.IsBase64DataUrl = function (uri) {
-        return base64DataUrlRegEx.test(uri);
-    };
-    /**
-     * Decode the given base64 uri.
-     * @param uri The uri to decode
-     * @return The decoded base64 data.
-     */
-    FileTools.DecodeBase64UrlToBinary = function (uri) {
-        return StringTools.DecodeBase64ToBinary(uri.split(",")[1]);
-    };
-    /**
-     * Decode the given base64 uri into a UTF-8 encoded string.
-     * @param uri The uri to decode
-     * @return The decoded base64 data.
-     */
-    FileTools.DecodeBase64UrlToString = function (uri) {
-        return StringTools.DecodeBase64ToString(uri.split(",")[1]);
-    };
+var FileToolsOptions = {
     /**
      * Gets or sets the retry strategy to apply when an error happens while loading an asset
      */
-    FileTools.DefaultRetryStrategy = RetryStrategy.ExponentialBackoff();
+    DefaultRetryStrategy: RetryStrategy.ExponentialBackoff(),
     /**
      * Gets or sets the base URL to use to load assets
      */
-    FileTools.BaseUrl = "";
+    BaseUrl: "",
     /**
      * Default behaviour for cors in the application.
      * It can be a string if the expected behavior is identical in the entire app.
      * Or a callback to be able to set it per url or on a group of them (in case of Video source for instance)
      */
-    FileTools.CorsBehavior = "anonymous";
+    CorsBehavior: "anonymous",
     /**
      * Gets or sets a function used to pre-process url before using them to load assets
      */
-    FileTools.PreprocessUrl = function (url) {
+    PreprocessUrl: function (url) {
         return url;
+    }
+};
+/**
+ * Removes unwanted characters from an url
+ * @param url defines the url to clean
+ * @returns the cleaned url
+ */
+var _CleanUrl = function (url) {
+    url = url.replace(/#/mg, "%23");
+    return url;
+};
+/**
+ * Sets the cors behavior on a dom element. This will add the required Tools.CorsBehavior to the element.
+ * @param url define the url we are trying
+ * @param element define the dom element where to configure the cors policy
+ * @hidden
+ */
+var SetCorsBehavior = function (url, element) {
+    if (url && url.indexOf("data:") === 0) {
+        return;
+    }
+    if (FileToolsOptions.CorsBehavior) {
+        if (typeof (FileToolsOptions.CorsBehavior) === 'string' || FileToolsOptions.CorsBehavior instanceof String) {
+            element.crossOrigin = FileToolsOptions.CorsBehavior;
+        }
+        else {
+            var result = FileToolsOptions.CorsBehavior(url);
+            if (result) {
+                element.crossOrigin = result;
+            }
+        }
+    }
+};
+/**
+ * Loads an image as an HTMLImageElement.
+ * @param input url string, ArrayBuffer, or Blob to load
+ * @param onLoad callback called when the image successfully loads
+ * @param onError callback called when the image fails to load
+ * @param offlineProvider offline provider for caching
+ * @param mimeType optional mime type
+ * @returns the HTMLImageElement of the loaded image
+ * @hidden
+ */
+var LoadImage = function (input, onLoad, onError, offlineProvider, mimeType, imageBitmapOptions) {
+    var _a;
+    if (mimeType === void 0) { mimeType = ""; }
+    var url;
+    var usingObjectURL = false;
+    if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
+        if (typeof Blob !== 'undefined') {
+            url = URL.createObjectURL(new Blob([input], { type: mimeType }));
+            usingObjectURL = true;
+        }
+        else {
+            url = "data:" + mimeType + ";base64," + EncodeArrayBufferToBase64(input);
+        }
+    }
+    else if (input instanceof Blob) {
+        url = URL.createObjectURL(input);
+        usingObjectURL = true;
+    }
+    else {
+        url = _CleanUrl(input);
+        url = FileToolsOptions.PreprocessUrl(input);
+    }
+    var engine = EngineStore.LastCreatedEngine;
+    var onErrorHandler = function (exception) {
+        if (onError) {
+            var inputText = url || input.toString();
+            onError("Error while trying to load image: " + ((inputText.indexOf('http') === 0 || inputText.length <= 128) ? inputText : inputText.slice(0, 128) + "..."), exception);
+        }
     };
-    return FileTools;
-}());
-ThinEngine._FileToolsLoadImage = FileTools.LoadImage.bind(FileTools);
-ThinEngine._FileToolsLoadFile = FileTools.LoadFile.bind(FileTools);
-ShaderProcessor._FileToolsLoadFile = FileTools.LoadFile.bind(FileTools);
+    if (typeof Image === "undefined" || ((_a = engine === null || engine === void 0 ? void 0 : engine._features.forceBitmapOverHTMLImageElement) !== null && _a !== void 0 ? _a : false)) {
+        LoadFile(url, function (data) {
+            engine.createImageBitmap(new Blob([data], { type: mimeType }), __assign({ premultiplyAlpha: "none" }, imageBitmapOptions)).then(function (imgBmp) {
+                onLoad(imgBmp);
+                if (usingObjectURL) {
+                    URL.revokeObjectURL(url);
+                }
+            }).catch(function (reason) {
+                if (onError) {
+                    onError("Error while trying to load image: " + input, reason);
+                }
+            });
+        }, undefined, offlineProvider || undefined, true, function (request, exception) {
+            onErrorHandler(exception);
+        });
+        return null;
+    }
+    var img = new Image();
+    SetCorsBehavior(url, img);
+    var loadHandler = function () {
+        img.removeEventListener("load", loadHandler);
+        img.removeEventListener("error", errorHandler);
+        onLoad(img);
+        // Must revoke the URL after calling onLoad to avoid security exceptions in
+        // certain scenarios (e.g. when hosted in vscode).
+        if (usingObjectURL && img.src) {
+            URL.revokeObjectURL(img.src);
+        }
+    };
+    var errorHandler = function (err) {
+        img.removeEventListener("load", loadHandler);
+        img.removeEventListener("error", errorHandler);
+        onErrorHandler(err);
+        if (usingObjectURL && img.src) {
+            URL.revokeObjectURL(img.src);
+        }
+    };
+    img.addEventListener("load", loadHandler);
+    img.addEventListener("error", errorHandler);
+    var noOfflineSupport = function () {
+        img.src = url;
+    };
+    var loadFromOfflineSupport = function () {
+        if (offlineProvider) {
+            offlineProvider.loadImage(url, img);
+        }
+    };
+    if (url.substr(0, 5) !== "data:" && offlineProvider && offlineProvider.enableTexturesOffline) {
+        offlineProvider.open(loadFromOfflineSupport, noOfflineSupport);
+    }
+    else {
+        if (url.indexOf("file:") !== -1) {
+            var textureName = decodeURIComponent(url.substring(5).toLowerCase());
+            if (FilesInputStore.FilesToLoad[textureName]) {
+                try {
+                    var blobURL;
+                    try {
+                        blobURL = URL.createObjectURL(FilesInputStore.FilesToLoad[textureName]);
+                    }
+                    catch (ex) {
+                        // Chrome doesn't support oneTimeOnly parameter
+                        blobURL = URL.createObjectURL(FilesInputStore.FilesToLoad[textureName]);
+                    }
+                    img.src = blobURL;
+                    usingObjectURL = true;
+                }
+                catch (e) {
+                    img.src = "";
+                }
+                return img;
+            }
+        }
+        noOfflineSupport();
+    }
+    return img;
+};
+/**
+ * Reads a file from a File object
+ * @param file defines the file to load
+ * @param onSuccess defines the callback to call when data is loaded
+ * @param onProgress defines the callback to call during loading process
+ * @param useArrayBuffer defines a boolean indicating that data must be returned as an ArrayBuffer
+ * @param onError defines the callback to call when an error occurs
+ * @returns a file request object
+ * @hidden
+ */
+var ReadFile = function (file, onSuccess, onProgress, useArrayBuffer, onError) {
+    var reader = new FileReader();
+    var fileRequest = {
+        onCompleteObservable: new Observable(),
+        abort: function () { return reader.abort(); },
+    };
+    reader.onloadend = function (e) { return fileRequest.onCompleteObservable.notifyObservers(fileRequest); };
+    if (onError) {
+        reader.onerror = function (e) {
+            onError(new ReadFileError("Unable to read " + file.name, file));
+        };
+    }
+    reader.onload = function (e) {
+        //target doesn't have result from ts 1.3
+        onSuccess(e.target['result']);
+    };
+    if (onProgress) {
+        reader.onprogress = onProgress;
+    }
+    if (!useArrayBuffer) {
+        // Asynchronous read
+        reader.readAsText(file);
+    }
+    else {
+        reader.readAsArrayBuffer(file);
+    }
+    return fileRequest;
+};
+/**
+ * Loads a file from a url, a data url, or a file url
+ * @param fileOrUrl file, url, data url, or file url to load
+ * @param onSuccess callback called when the file successfully loads
+ * @param onProgress callback called while file is loading (if the server supports this mode)
+ * @param offlineProvider defines the offline provider for caching
+ * @param useArrayBuffer defines a boolean indicating that date must be returned as ArrayBuffer
+ * @param onError callback called when the file fails to load
+ * @returns a file request object
+ * @hidden
+ */
+var LoadFile = function (fileOrUrl, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError, onOpened) {
+    if (fileOrUrl.name) {
+        return ReadFile(fileOrUrl, onSuccess, onProgress, useArrayBuffer, onError ? function (error) {
+            onError(undefined, error);
+        } : undefined);
+    }
+    var url = fileOrUrl;
+    // If file and file input are set
+    if (url.indexOf("file:") !== -1) {
+        var fileName = decodeURIComponent(url.substring(5).toLowerCase());
+        if (fileName.indexOf('./') === 0) {
+            fileName = fileName.substring(2);
+        }
+        var file = FilesInputStore.FilesToLoad[fileName];
+        if (file) {
+            return ReadFile(file, onSuccess, onProgress, useArrayBuffer, onError ? function (error) { return onError(undefined, new LoadFileError(error.message, error.file)); } : undefined);
+        }
+    }
+    // For a Base64 Data URL
+    if (IsBase64DataUrl(url)) {
+        var fileRequest_1 = {
+            onCompleteObservable: new Observable(),
+            abort: function () { return function () { }; },
+        };
+        try {
+            onSuccess(useArrayBuffer ? DecodeBase64UrlToBinary(url) : DecodeBase64UrlToString(url));
+        }
+        catch (error) {
+            if (onError) {
+                onError(undefined, error);
+            }
+            else {
+                Logger.Error(error.message || "Failed to parse the Data URL");
+            }
+        }
+        TimingTools.SetImmediate(function () {
+            fileRequest_1.onCompleteObservable.notifyObservers(fileRequest_1);
+        });
+        return fileRequest_1;
+    }
+    return RequestFile(url, function (data, request) {
+        onSuccess(data, request ? request.responseURL : undefined);
+    }, onProgress, offlineProvider, useArrayBuffer, onError ? function (error) {
+        onError(error.request, new LoadFileError(error.message, error.request));
+    } : undefined, onOpened);
+};
+/**
+ * Loads a file from a url
+ * @param url url to load
+ * @param onSuccess callback called when the file successfully loads
+ * @param onProgress callback called while file is loading (if the server supports this mode)
+ * @param offlineProvider defines the offline provider for caching
+ * @param useArrayBuffer defines a boolean indicating that date must be returned as ArrayBuffer
+ * @param onError callback called when the file fails to load
+ * @param onOpened callback called when the web request is opened
+ * @returns a file request object
+ * @hidden
+ */
+var RequestFile = function (url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError, onOpened) {
+    url = _CleanUrl(url);
+    url = FileToolsOptions.PreprocessUrl(url);
+    var loadUrl = FileToolsOptions.BaseUrl + url;
+    var aborted = false;
+    var fileRequest = {
+        onCompleteObservable: new Observable(),
+        abort: function () { return aborted = true; },
+    };
+    var requestFile = function () {
+        var request = new WebRequest();
+        var retryHandle = null;
+        fileRequest.abort = function () {
+            aborted = true;
+            if (request.readyState !== (XMLHttpRequest.DONE || 4)) {
+                request.abort();
+            }
+            if (retryHandle !== null) {
+                clearTimeout(retryHandle);
+                retryHandle = null;
+            }
+        };
+        var handleError = function (error) {
+            var message = error.message || "Unknown error";
+            if (onError) {
+                onError(new RequestFileError(message, request));
+            }
+            else {
+                Logger.Error(message);
+            }
+        };
+        var retryLoop = function (retryIndex) {
+            request.open('GET', loadUrl);
+            if (onOpened) {
+                try {
+                    onOpened(request);
+                }
+                catch (e) {
+                    handleError(e);
+                    return;
+                }
+            }
+            if (useArrayBuffer) {
+                request.responseType = "arraybuffer";
+            }
+            if (onProgress) {
+                request.addEventListener("progress", onProgress);
+            }
+            var onLoadEnd = function () {
+                request.removeEventListener("loadend", onLoadEnd);
+                fileRequest.onCompleteObservable.notifyObservers(fileRequest);
+                fileRequest.onCompleteObservable.clear();
+            };
+            request.addEventListener("loadend", onLoadEnd);
+            var onReadyStateChange = function () {
+                if (aborted) {
+                    return;
+                }
+                // In case of undefined state in some browsers.
+                if (request.readyState === (XMLHttpRequest.DONE || 4)) {
+                    // Some browsers have issues where onreadystatechange can be called multiple times with the same value.
+                    request.removeEventListener("readystatechange", onReadyStateChange);
+                    if ((request.status >= 200 && request.status < 300) || (request.status === 0 && (!IsWindowObjectExist() || IsFileURL()))) {
+                        try {
+                            onSuccess(useArrayBuffer ? request.response : request.responseText, request);
+                        }
+                        catch (e) {
+                            handleError(e);
+                        }
+                        return;
+                    }
+                    var retryStrategy = FileToolsOptions.DefaultRetryStrategy;
+                    if (retryStrategy) {
+                        var waitTime = retryStrategy(loadUrl, request, retryIndex);
+                        if (waitTime !== -1) {
+                            // Prevent the request from completing for retry.
+                            request.removeEventListener("loadend", onLoadEnd);
+                            request = new WebRequest();
+                            retryHandle = setTimeout(function () { return retryLoop(retryIndex + 1); }, waitTime);
+                            return;
+                        }
+                    }
+                    var error = new RequestFileError("Error status: " + request.status + " " + request.statusText + " - Unable to load " + loadUrl, request);
+                    if (onError) {
+                        onError(error);
+                    }
+                }
+            };
+            request.addEventListener("readystatechange", onReadyStateChange);
+            request.send();
+        };
+        retryLoop(0);
+    };
+    // Caching all files
+    if (offlineProvider && offlineProvider.enableSceneOffline) {
+        var noOfflineSupport_1 = function (request) {
+            if (request && request.status > 400) {
+                if (onError) {
+                    onError(request);
+                }
+            }
+            else {
+                requestFile();
+            }
+        };
+        var loadFromOfflineSupport = function () {
+            // TODO: database needs to support aborting and should return a IFileRequest
+            if (offlineProvider) {
+                offlineProvider.loadFile(FileToolsOptions.BaseUrl + url, function (data) {
+                    if (!aborted) {
+                        onSuccess(data);
+                    }
+                    fileRequest.onCompleteObservable.notifyObservers(fileRequest);
+                }, onProgress ? function (event) {
+                    if (!aborted) {
+                        onProgress(event);
+                    }
+                } : undefined, noOfflineSupport_1, useArrayBuffer);
+            }
+        };
+        offlineProvider.open(loadFromOfflineSupport, noOfflineSupport_1);
+    }
+    else {
+        requestFile();
+    }
+    return fileRequest;
+};
+/**
+ * Checks if the loaded document was accessed via `file:`-Protocol.
+ * @returns boolean
+ * @hidden
+ */
+var IsFileURL = function () {
+    return typeof location !== "undefined" && location.protocol === "file:";
+};
+/**
+ * Test if the given uri is a valid base64 data url
+ * @param uri The uri to test
+ * @return True if the uri is a base64 data url or false otherwise
+ * @hidden
+ */
+var IsBase64DataUrl = function (uri) {
+    return base64DataUrlRegEx.test(uri);
+};
+/**
+ * Decode the given base64 uri.
+ * @param uri The uri to decode
+ * @return The decoded base64 data.
+ * @hidden
+ */
+function DecodeBase64UrlToBinary(uri) {
+    return DecodeBase64ToBinary(uri.split(",")[1]);
+}
+/**
+ * Decode the given base64 uri into a UTF-8 encoded string.
+ * @param uri The uri to decode
+ * @return The decoded base64 data.
+ * @hidden
+ */
+var DecodeBase64UrlToString = function (uri) {
+    return DecodeBase64ToString(uri.split(",")[1]);
+};
+/**
+ * This will be executed automatically for UMD and es5.
+ * If esm dev wants the side effects to execute they will have to run it manually
+ * Once we build native modules those need to be exported.
+ * @hidden
+ */
+var initSideEffects = function () {
+    ThinEngine._FileToolsLoadImage = LoadImage;
+    ThinEngine._FileToolsLoadFile = LoadFile;
+    ShaderProcessor._FileToolsLoadFile = LoadFile;
+};
+initSideEffects();
+_injectLTSFileTools(DecodeBase64UrlToBinary, DecodeBase64UrlToString, FileToolsOptions, IsBase64DataUrl, IsFileURL, LoadFile, LoadImage, ReadFile, RequestFile, SetCorsBehavior);
 
 var PromiseStates;
 (function (PromiseStates) {
@@ -18494,7 +18693,7 @@ var InstantiationTools = /** @class */ (function () {
         if (this.RegisteredExternalClasses && this.RegisteredExternalClasses[className]) {
             return this.RegisteredExternalClasses[className];
         }
-        var internalClass = _TypeStore.GetClass(className);
+        var internalClass = GetClass(className);
         if (internalClass) {
             return internalClass;
         }
@@ -18518,25 +18717,17 @@ var InstantiationTools = /** @class */ (function () {
 }());
 
 /**
- * Class used to manipulate GUIDs
+ * Implementation from http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript/2117523#answer-2117523
+ * Be aware Math.random() could cause collisions, but:
+ * "All but 6 of the 128 bits of the ID are randomly generated, which means that for any two ids, there's a 1 in 2^^122 (or 5.3x10^^36) chance they'll collide"
+ * @returns a pseudo random id
  */
-var GUID = /** @class */ (function () {
-    function GUID() {
-    }
-    /**
-     * Implementation from http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript/2117523#answer-2117523
-     * Be aware Math.random() could cause collisions, but:
-     * "All but 6 of the 128 bits of the ID are randomly generated, which means that for any two ids, there's a 1 in 2^^122 (or 5.3x10^^36) chance they'll collide"
-     * @returns a pseudo random id
-     */
-    GUID.RandomId = function () {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    };
-    return GUID;
-}());
+function RandomGUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 
 /**
  * Class used to provide helpers for slicing
@@ -18585,10 +18776,10 @@ var Tools = /** @class */ (function () {
          * Gets or sets the base URL to use to load assets
          */
         get: function () {
-            return FileTools.BaseUrl;
+            return FileToolsOptions.BaseUrl;
         },
         set: function (value) {
-            FileTools.BaseUrl = value;
+            FileToolsOptions.BaseUrl = value;
         },
         enumerable: false,
         configurable: true
@@ -18598,10 +18789,10 @@ var Tools = /** @class */ (function () {
          * Gets or sets the retry strategy to apply when an error happens while loading an asset
          */
         get: function () {
-            return FileTools.DefaultRetryStrategy;
+            return FileToolsOptions.DefaultRetryStrategy;
         },
         set: function (strategy) {
-            FileTools.DefaultRetryStrategy = strategy;
+            FileToolsOptions.DefaultRetryStrategy = strategy;
         },
         enumerable: false,
         configurable: true
@@ -18613,10 +18804,10 @@ var Tools = /** @class */ (function () {
          * Or a callback to be able to set it per url or on a group of them (in case of Video source for instance)
          */
         get: function () {
-            return FileTools.CorsBehavior;
+            return FileToolsOptions.CorsBehavior;
         },
         set: function (value) {
-            FileTools.CorsBehavior = value;
+            FileToolsOptions.CorsBehavior = value;
         },
         enumerable: false,
         configurable: true
@@ -18816,7 +19007,7 @@ var Tools = /** @class */ (function () {
     Tools.GetPointerPrefix = function (engine) {
         var eventPrefix = "pointer";
         // Check if pointer events are supported
-        if (DomManagement.IsWindowObjectExist() && !window.PointerEvent && DomManagement.IsNavigatorAvailable() && !navigator.pointerEnabled) {
+        if (IsWindowObjectExist() && !window.PointerEvent && IsNavigatorAvailable() && !navigator.pointerEnabled) {
             eventPrefix = "mouse";
         }
         // Special Fallback MacOS Safari...
@@ -18834,7 +19025,7 @@ var Tools = /** @class */ (function () {
      * @param element define the dom element where to configure the cors policy
      */
     Tools.SetCorsBehavior = function (url, element) {
-        FileTools.SetCorsBehavior(url, element);
+        SetCorsBehavior(url, element);
     };
     // External files
     /**
@@ -18851,10 +19042,10 @@ var Tools = /** @class */ (function () {
          * Gets or sets a function used to pre-process url before using them to load assets
          */
         get: function () {
-            return FileTools.PreprocessUrl;
+            return FileToolsOptions.PreprocessUrl;
         },
         set: function (processor) {
-            FileTools.PreprocessUrl = processor;
+            FileToolsOptions.PreprocessUrl = processor;
         },
         enumerable: false,
         configurable: true
@@ -18870,7 +19061,7 @@ var Tools = /** @class */ (function () {
      * @returns the HTMLImageElement of the loaded image
      */
     Tools.LoadImage = function (input, onLoad, onError, offlineProvider, mimeType, imageBitmapOptions) {
-        return FileTools.LoadImage(input, onLoad, onError, offlineProvider, mimeType, imageBitmapOptions);
+        return LoadImage(input, onLoad, onError, offlineProvider, mimeType, imageBitmapOptions);
     };
     /**
      * Loads a file from a url
@@ -18883,7 +19074,7 @@ var Tools = /** @class */ (function () {
      * @returns a file request object
      */
     Tools.LoadFile = function (url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError) {
-        return FileTools.LoadFile(url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError);
+        return LoadFile(url, onSuccess, onProgress, offlineProvider, useArrayBuffer, onError);
     };
     /**
      * Loads a file from a url
@@ -18894,7 +19085,7 @@ var Tools = /** @class */ (function () {
     Tools.LoadFileAsync = function (url, useArrayBuffer) {
         if (useArrayBuffer === void 0) { useArrayBuffer = true; }
         return new Promise(function (resolve, reject) {
-            FileTools.LoadFile(url, function (data) {
+            LoadFile(url, function (data) {
                 resolve(data);
             }, undefined, undefined, useArrayBuffer, function (request, exception) {
                 reject(exception);
@@ -18910,7 +19101,7 @@ var Tools = /** @class */ (function () {
      * @param scriptId defines the id of the script element
      */
     Tools.LoadScript = function (scriptUrl, onSuccess, onError, scriptId) {
-        if (!DomManagement.IsWindowObjectExist()) {
+        if (!IsWindowObjectExist()) {
             return;
         }
         var head = document.getElementsByTagName("head")[0];
@@ -18983,7 +19174,7 @@ var Tools = /** @class */ (function () {
      * @returns a file request object
      */
     Tools.ReadFile = function (file, onSuccess, onProgress, useArrayBuffer, onError) {
-        return FileTools.ReadFile(file, onSuccess, onProgress, useArrayBuffer, onError);
+        return ReadFile(file, onSuccess, onProgress, useArrayBuffer, onError);
     };
     /**
      * Creates a data url from a given string content
@@ -19311,7 +19502,7 @@ var Tools = /** @class */ (function () {
      * Check your browser for supported MIME types
      */
     Tools.CreateScreenshot = function (engine, camera, size, successCallback, mimeType) {
-        throw _DevTools.WarnImport("ScreenshotTools");
+        throw _WarnImport("ScreenshotTools");
     };
     /**
      * Captures a screenshot of the current rendering
@@ -19329,7 +19520,7 @@ var Tools = /** @class */ (function () {
      * to the src parameter of an <img> to display it
      */
     Tools.CreateScreenshotAsync = function (engine, camera, size, mimeType) {
-        throw _DevTools.WarnImport("ScreenshotTools");
+        throw _WarnImport("ScreenshotTools");
     };
     /**
      * Generates an image screenshot from the specified camera.
@@ -19351,7 +19542,7 @@ var Tools = /** @class */ (function () {
      * @param fileName A name for for the downloaded file.
      */
     Tools.CreateScreenshotUsingRenderTarget = function (engine, camera, size, successCallback, mimeType, samples, antialiasing, fileName) {
-        throw _DevTools.WarnImport("ScreenshotTools");
+        throw _WarnImport("ScreenshotTools");
     };
     /**
      * Generates an image screenshot from the specified camera.
@@ -19372,7 +19563,7 @@ var Tools = /** @class */ (function () {
      * to the src parameter of an <img> to display it
      */
     Tools.CreateScreenshotUsingRenderTargetAsync = function (engine, camera, size, mimeType, samples, antialiasing, fileName) {
-        throw _DevTools.WarnImport("ScreenshotTools");
+        throw _WarnImport("ScreenshotTools");
     };
     /**
      * Implementation from http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript/2117523#answer-2117523
@@ -19381,7 +19572,7 @@ var Tools = /** @class */ (function () {
      * @returns a pseudo random id
      */
     Tools.RandomId = function () {
-        return GUID.RandomId();
+        return RandomGUID();
     };
     /**
      * Test if the given uri is a base64 string
@@ -19390,7 +19581,7 @@ var Tools = /** @class */ (function () {
      * @return True if the uri is a base64 string or false otherwise
      */
     Tools.IsBase64 = function (uri) {
-        return FileTools.IsBase64DataUrl(uri);
+        return IsBase64DataUrl(uri);
     };
     /**
      * Decode the given base64 uri.
@@ -19399,17 +19590,7 @@ var Tools = /** @class */ (function () {
      * @return The decoded base64 data.
      */
     Tools.DecodeBase64 = function (uri) {
-        return FileTools.DecodeBase64UrlToBinary(uri);
-    };
-    /**
-     * Gets the absolute url.
-     * @param url the input url
-     * @return the absolute url
-     */
-    Tools.GetAbsoluteUrl = function (url) {
-        var a = document.createElement("a");
-        a.href = url;
-        return a.href;
+        return DecodeBase64UrlToBinary(uri);
     };
     Object.defineProperty(Tools, "errorsCount", {
         /**
@@ -19495,7 +19676,7 @@ var Tools = /** @class */ (function () {
     Tools._StartUserMark = function (counterName, condition) {
         if (condition === void 0) { condition = true; }
         if (!Tools._performance) {
-            if (!DomManagement.IsWindowObjectExist()) {
+            if (!IsWindowObjectExist()) {
                 return;
             }
             Tools._performance = window.performance;
@@ -19627,7 +19808,7 @@ var Tools = /** @class */ (function () {
      * @returns whether or not the current user agent is safari
      */
     Tools.IsSafari = function () {
-        if (!DomManagement.IsNavigatorAvailable()) {
+        if (!IsNavigatorAvailable()) {
             return false;
         }
         return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -19646,9 +19827,15 @@ var Tools = /** @class */ (function () {
     Tools._tmpFloatArray = new Float32Array(1);
     /**
      * Extracts text content from a DOM element hierarchy
-     * Back Compat only, please use DomManagement.GetDOMTextContent instead.
+     * Back Compat only, please use GetDOMTextContent instead.
      */
-    Tools.GetDOMTextContent = DomManagement.GetDOMTextContent;
+    Tools.GetDOMTextContent = GetDOMTextContent;
+    /**
+     * Function used to get the absolute url. Override for custom implementation.
+     */
+    Tools.GetAbsoluteUrl = (typeof document === "object") ? function (url) { var a = document.createElement("a"); a.href = url; return a.href; } :
+        (typeof URL === "function" && typeof location === "object") ? function (url) { return new URL(url, location.origin).href; } :
+            function (url) { throw new Error("Unable to get absolute URL. Override BABYLON.Tools.GetAbsoluteUrl to a custom implementation for the current context."); };
     // Logs
     /**
      * No log
@@ -19672,9 +19859,9 @@ var Tools = /** @class */ (function () {
     Tools.AllLogLevel = Logger.AllLogLevel;
     /**
      * Checks if the window object exists
-     * Back Compat only, please use DomManagement.IsWindowObjectExist instead.
+     * Back Compat only, please use IsWindowObjectExist instead.
      */
-    Tools.IsWindowObjectExist = DomManagement.IsWindowObjectExist;
+    Tools.IsWindowObjectExist = IsWindowObjectExist;
     // Performances
     /**
      * No performance log
@@ -20044,6 +20231,112 @@ var Tags = /** @class */ (function () {
     };
     return Tags;
 }());
+
+// "Coroutines are computer program components that generalize subroutines for non-preemptive multitasking, by allowing execution to be suspended and resumed."
+// https://en.wikipedia.org/wiki/Coroutine
+// The inline scheduler simply steps the coroutine synchronously. This is useful for running a coroutine synchronously, and also as a helper function for other schedulers.
+/** @hidden */
+function inlineScheduler(coroutine, onSuccess, onError) {
+    try {
+        var step_1 = coroutine.next();
+        if (step_1.done) {
+            onSuccess(step_1);
+        }
+        else if (!step_1.value) {
+            // NOTE: The properties of step have been narrowed, but the type of step itself is not narrowed, so the cast below is the most type safe way to deal with this without instantiating a new object to hold the values.
+            onSuccess(step_1);
+        }
+        else {
+            step_1.value.then(function () {
+                step_1.value = undefined;
+                onSuccess(step_1);
+            }, function (error) { return onError(error); });
+        }
+    }
+    catch (error) {
+        onError(error);
+    }
+}
+// The yielding scheduler steps the coroutine synchronously until the specified time interval has elapsed, then yields control so other operations can be performed.
+// A single instance of a yielding scheduler could be shared across multiple coroutines to yield when their collective work exceeds the threshold.
+/** @hidden */
+function createYieldingScheduler(yieldAfterMS) {
+    if (yieldAfterMS === void 0) { yieldAfterMS = 25; }
+    var startTime;
+    return function (coroutine, onSuccess, onError) {
+        var currentTime = performance.now();
+        if (startTime === undefined || currentTime - startTime > yieldAfterMS) {
+            // If this is the first coroutine step, or if the time interval has elapsed, record a new start time, and schedule the coroutine step to happen later, effectively yielding control of the execution context.
+            startTime = currentTime;
+            setTimeout(function () {
+                inlineScheduler(coroutine, onSuccess, onError);
+            }, 0);
+        }
+        else {
+            // Otherwise it is not time to yield yet, so step the coroutine synchronously.
+            inlineScheduler(coroutine, onSuccess, onError);
+        }
+    };
+}
+// Runs the specified coroutine with the specified scheduler. The success or error callback will be invoked when the coroutine finishes.
+/** @hidden */
+function runCoroutine(coroutine, scheduler, onSuccess, onError, abortSignal) {
+    function resume() {
+        if (!abortSignal || !abortSignal.aborted) {
+            scheduler(coroutine, function (stepResult) {
+                if (stepResult.done) {
+                    // If the coroutine is done, report success.
+                    onSuccess(stepResult.value);
+                }
+                else {
+                    // If the coroutine is not done, resume the coroutine (via the scheduler).
+                    resume();
+                }
+            }, function (error) {
+                // If the coroutine threw an error, report the error.
+                onError(error);
+            });
+        }
+        else {
+            onError("Aborted");
+        }
+    }
+    resume();
+}
+// Runs the specified coroutine synchronously.
+/** @hidden */
+function runCoroutineSync(coroutine, abortSignal) {
+    // Run the coroutine with the inline scheduler, storing the returned value, or re-throwing the error (since the error callback will be called synchronously by the inline scheduler).
+    var result;
+    runCoroutine(coroutine, inlineScheduler, function (r) { return result = r; }, function (e) { throw e; }, abortSignal);
+    // Synchronously return the result of the coroutine.
+    return result;
+}
+// Runs the specified coroutine asynchronously with the specified scheduler.
+/** @hidden */
+function runCoroutineAsync(coroutine, scheduler, abortSignal) {
+    // Run the coroutine with a yielding scheduler, resolving or rejecting the result promise when the coroutine finishes.
+    return new Promise(function (resolve, reject) {
+        runCoroutine(coroutine, scheduler, resolve, reject, abortSignal);
+    });
+}
+/**
+ * Given a function that returns a Coroutine<T>, produce a function with the same parameters that returns a T.
+ * The returned function runs the coroutine synchronously.
+ * @param coroutineFactory A function that returns a Coroutine<T>.
+ * @returns A function that runs the coroutine synchronously.
+ * @hidden
+ */
+function makeSyncFunction(coroutineFactory, abortSignal) {
+    return function () {
+        var params = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            params[_i] = arguments[_i];
+        }
+        // Run the coroutine synchronously.
+        return runCoroutineSync(coroutineFactory.apply(void 0, params), abortSignal);
+    };
+}
 
 /**
  * Class representing a vector containing 2 coordinates
@@ -24387,9 +24680,10 @@ var Matrix = /** @class */ (function () {
      * @param scale defines the scale vector3 given as a reference to update
      * @param rotation defines the rotation quaternion given as a reference to update
      * @param translation defines the translation vector3 given as a reference to update
+     * @param preserveScalingNode Use scaling sign coming from this node. Otherwise scaling sign might change.
      * @returns true if operation was successful
      */
-    Matrix.prototype.decompose = function (scale, rotation, translation) {
+    Matrix.prototype.decompose = function (scale, rotation, translation, preserveScalingNode) {
         if (this._isIdentity) {
             if (translation) {
                 translation.setAll(0);
@@ -24410,8 +24704,18 @@ var Matrix = /** @class */ (function () {
         scale.x = Math.sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
         scale.y = Math.sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]);
         scale.z = Math.sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10]);
-        if (this.determinant() <= 0) {
-            scale.y *= -1;
+        if (preserveScalingNode) {
+            var signX = preserveScalingNode.scaling.x < 0 ? -1 : 1;
+            var signY = preserveScalingNode.scaling.y < 0 ? -1 : 1;
+            var signZ = preserveScalingNode.scaling.z < 0 ? -1 : 1;
+            scale.x *= signX;
+            scale.y *= signY;
+            scale.z *= signZ;
+        }
+        else {
+            if (this.determinant() <= 0) {
+                scale.y *= -1;
+            }
         }
         if (scale._x === 0 || scale._y === 0 || scale._z === 0) {
             if (rotation) {
@@ -25367,15 +25671,17 @@ var Matrix = /** @class */ (function () {
      * @param fov defines the horizontal field of view
      * @param aspect defines the aspect ratio
      * @param znear defines the near clip plane
-     * @param zfar defines the far clip plane
+     * @param zfar defines the far clip plane. If 0, assume we are in "infinite zfar" mode
      * @param halfZRange true to generate NDC coordinates between 0 and 1 instead of -1 and 1 (default: false)
      * @param projectionPlaneTilt optional tilt angle of the projection plane around the X axis (horizontal)
+     * @param reverseDepthBufferMode true to indicate that we are in a reverse depth buffer mode (meaning znear and zfar have been inverted when calling the function)
      * @returns a new matrix as a left-handed perspective projection matrix
      */
-    Matrix.PerspectiveFovLH = function (fov, aspect, znear, zfar, halfZRange, projectionPlaneTilt) {
+    Matrix.PerspectiveFovLH = function (fov, aspect, znear, zfar, halfZRange, projectionPlaneTilt, reverseDepthBufferMode) {
         if (projectionPlaneTilt === void 0) { projectionPlaneTilt = 0; }
+        if (reverseDepthBufferMode === void 0) { reverseDepthBufferMode = false; }
         var matrix = new Matrix();
-        Matrix.PerspectiveFovLHToRef(fov, aspect, znear, zfar, matrix, true, halfZRange, projectionPlaneTilt);
+        Matrix.PerspectiveFovLHToRef(fov, aspect, znear, zfar, matrix, true, halfZRange, projectionPlaneTilt, reverseDepthBufferMode);
         return matrix;
     };
     /**
@@ -25383,22 +25689,24 @@ var Matrix = /** @class */ (function () {
      * @param fov defines the horizontal field of view
      * @param aspect defines the aspect ratio
      * @param znear defines the near clip plane
-     * @param zfar defines the far clip plane
+     * @param zfar defines the far clip plane. If 0, assume we are in "infinite zfar" mode
      * @param result defines the target matrix
      * @param isVerticalFovFixed defines it the fov is vertically fixed (default) or horizontally
      * @param halfZRange true to generate NDC coordinates between 0 and 1 instead of -1 and 1 (default: false)
      * @param projectionPlaneTilt optional tilt angle of the projection plane around the X axis (horizontal)
+     * @param reverseDepthBufferMode true to indicate that we are in a reverse depth buffer mode (meaning znear and zfar have been inverted when calling the function)
      */
-    Matrix.PerspectiveFovLHToRef = function (fov, aspect, znear, zfar, result, isVerticalFovFixed, halfZRange, projectionPlaneTilt) {
+    Matrix.PerspectiveFovLHToRef = function (fov, aspect, znear, zfar, result, isVerticalFovFixed, halfZRange, projectionPlaneTilt, reverseDepthBufferMode) {
         if (isVerticalFovFixed === void 0) { isVerticalFovFixed = true; }
         if (projectionPlaneTilt === void 0) { projectionPlaneTilt = 0; }
+        if (reverseDepthBufferMode === void 0) { reverseDepthBufferMode = false; }
         var n = znear;
         var f = zfar;
         var t = 1.0 / (Math.tan(fov * 0.5));
         var a = isVerticalFovFixed ? (t / aspect) : t;
         var b = isVerticalFovFixed ? t : (t * aspect);
-        var c = f !== 0 ? (f + n) / (f - n) : 1;
-        var d = f !== 0 ? -2.0 * f * n / (f - n) : -2 * n;
+        var c = reverseDepthBufferMode && n === 0 ? -1 : f !== 0 ? (f + n) / (f - n) : 1;
+        var d = reverseDepthBufferMode && n === 0 ? 2 * f : f !== 0 ? -2.0 * f * n / (f - n) : -2 * n;
         var rot = Math.tan(projectionPlaneTilt);
         Matrix.FromValuesToRef(a, 0.0, 0.0, 0.0, 0.0, b, 0.0, rot, 0.0, 0.0, c, 1.0, 0.0, 0.0, d, 0.0, result);
         if (halfZRange) {
@@ -25435,15 +25743,17 @@ var Matrix = /** @class */ (function () {
      * @param fov defines the horizontal field of view
      * @param aspect defines the aspect ratio
      * @param znear defines the near clip plane
-     * @param zfar defines the far clip plane
+     * @param zfar defines the far clip plane. If 0, assume we are in "infinite zfar" mode
      * @param halfZRange true to generate NDC coordinates between 0 and 1 instead of -1 and 1 (default: false)
      * @param projectionPlaneTilt optional tilt angle of the projection plane around the X axis (horizontal)
+     * @param reverseDepthBufferMode true to indicate that we are in a reverse depth buffer mode (meaning znear and zfar have been inverted when calling the function)
      * @returns a new matrix as a right-handed perspective projection matrix
      */
-    Matrix.PerspectiveFovRH = function (fov, aspect, znear, zfar, halfZRange, projectionPlaneTilt) {
+    Matrix.PerspectiveFovRH = function (fov, aspect, znear, zfar, halfZRange, projectionPlaneTilt, reverseDepthBufferMode) {
         if (projectionPlaneTilt === void 0) { projectionPlaneTilt = 0; }
+        if (reverseDepthBufferMode === void 0) { reverseDepthBufferMode = false; }
         var matrix = new Matrix();
-        Matrix.PerspectiveFovRHToRef(fov, aspect, znear, zfar, matrix, true, halfZRange, projectionPlaneTilt);
+        Matrix.PerspectiveFovRHToRef(fov, aspect, znear, zfar, matrix, true, halfZRange, projectionPlaneTilt, reverseDepthBufferMode);
         return matrix;
     };
     /**
@@ -25451,26 +25761,28 @@ var Matrix = /** @class */ (function () {
      * @param fov defines the horizontal field of view
      * @param aspect defines the aspect ratio
      * @param znear defines the near clip plane
-     * @param zfar defines the far clip plane
+     * @param zfar defines the far clip plane. If 0, assume we are in "infinite zfar" mode
      * @param result defines the target matrix
      * @param isVerticalFovFixed defines it the fov is vertically fixed (default) or horizontally
      * @param halfZRange true to generate NDC coordinates between 0 and 1 instead of -1 and 1 (default: false)
      * @param projectionPlaneTilt optional tilt angle of the projection plane around the X axis (horizontal)
+     * @param reverseDepthBufferMode true to indicate that we are in a reverse depth buffer mode (meaning znear and zfar have been inverted when calling the function)
      */
-    Matrix.PerspectiveFovRHToRef = function (fov, aspect, znear, zfar, result, isVerticalFovFixed, halfZRange, projectionPlaneTilt) {
+    Matrix.PerspectiveFovRHToRef = function (fov, aspect, znear, zfar, result, isVerticalFovFixed, halfZRange, projectionPlaneTilt, reverseDepthBufferMode) {
         //alternatively this could be expressed as:
         //    m = PerspectiveFovLHToRef
         //    m[10] *= -1.0;
         //    m[11] *= -1.0;
         if (isVerticalFovFixed === void 0) { isVerticalFovFixed = true; }
         if (projectionPlaneTilt === void 0) { projectionPlaneTilt = 0; }
+        if (reverseDepthBufferMode === void 0) { reverseDepthBufferMode = false; }
         var n = znear;
         var f = zfar;
         var t = 1.0 / (Math.tan(fov * 0.5));
         var a = isVerticalFovFixed ? (t / aspect) : t;
         var b = isVerticalFovFixed ? t : (t * aspect);
-        var c = f !== 0 ? -(f + n) / (f - n) : -1;
-        var d = f !== 0 ? -2 * f * n / (f - n) : -2 * n;
+        var c = reverseDepthBufferMode && n === 0 ? 1 : f !== 0 ? -(f + n) / (f - n) : -1;
+        var d = reverseDepthBufferMode && n === 0 ? 2 * f : f !== 0 ? -2 * f * n / (f - n) : -2 * n;
         var rot = Math.tan(projectionPlaneTilt);
         Matrix.FromValuesToRef(a, 0.0, 0.0, 0.0, 0.0, b, 0.0, rot, 0.0, 0.0, c, -1.0, 0.0, 0.0, d, 0.0, result);
         if (halfZRange) {
@@ -25720,10 +26032,10 @@ var TmpVectors = /** @class */ (function () {
     TmpVectors.Matrix = ArrayTools.BuildTuple(8, Matrix.Identity); // 8 temp Matrices at once should be enough
     return TmpVectors;
 }());
-_TypeStore.RegisteredTypes["BABYLON.Vector2"] = Vector2;
-_TypeStore.RegisteredTypes["BABYLON.Vector3"] = Vector3;
-_TypeStore.RegisteredTypes["BABYLON.Vector4"] = Vector4;
-_TypeStore.RegisteredTypes["BABYLON.Matrix"] = Matrix;
+RegisterClass("BABYLON.Vector2", Vector2);
+RegisterClass("BABYLON.Vector3", Vector3);
+RegisterClass("BABYLON.Vector4", Vector4);
+RegisterClass("BABYLON.Matrix", Matrix);
 var mtxConvertNDCToHalfZRange = Matrix.FromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1);
 
 var __decoratorInitialStore = {};
@@ -26056,19 +26368,19 @@ var SerializationHelper = /** @class */ (function () {
     SerializationHelper.AllowLoadingUniqueId = false;
     /** @hidden */
     SerializationHelper._ImageProcessingConfigurationParser = function (sourceProperty) {
-        throw _DevTools.WarnImport("ImageProcessingConfiguration");
+        throw _WarnImport("ImageProcessingConfiguration");
     };
     /** @hidden */
     SerializationHelper._FresnelParametersParser = function (sourceProperty) {
-        throw _DevTools.WarnImport("FresnelParameters");
+        throw _WarnImport("FresnelParameters");
     };
     /** @hidden */
     SerializationHelper._ColorCurvesParser = function (sourceProperty) {
-        throw _DevTools.WarnImport("ColorCurves");
+        throw _WarnImport("ColorCurves");
     };
     /** @hidden */
     SerializationHelper._TextureParser = function (sourceProperty, scene, rootUrl) {
-        throw _DevTools.WarnImport("Texture");
+        throw _WarnImport("Texture");
     };
     return SerializationHelper;
 }());
@@ -26148,6 +26460,7 @@ var Node = /** @class */ (function () {
      */
     function Node(name, scene) {
         if (scene === void 0) { scene = null; }
+        this._isDirty = false;
         this._nodeDataStorage = new _InternalNodeDataInfo();
         /**
          * Gets or sets a string used to store user defined state for the node
@@ -26182,6 +26495,7 @@ var Node = /** @class */ (function () {
         /** @hidden */
         this._cache = {};
         this._parentNode = null;
+        /** @hidden */
         this._children = null;
         /** @hidden */
         this._worldMatrix = Matrix.Identity();
@@ -26548,6 +26862,16 @@ var Node = /** @class */ (function () {
         return this._nodeDataStorage._isReady;
     };
     /**
+    * Flag the  node as dirty (Forcing it to update everything)
+    * @param property helps children apply precise "dirtyfication"
+    * @returns this node
+    */
+    Node.prototype.markAsDirty = function (property) {
+        this._currentRenderId = Number.MAX_VALUE;
+        this._isDirty = true;
+        return this;
+    };
+    /**
      * Is this node enabled?
      * If the node has a parent, all ancestors will be checked and false will be returned if any are false (not enabled), otherwise will return true
      * @param checkAncestors indicates if this method should check the ancestors. The default is to check the ancestors. If set to false, the method will return the value of this node without checking ancestors
@@ -26875,7 +27199,7 @@ var Node = /** @class */ (function () {
     };
     /** @hidden */
     Node._AnimationRangeFactory = function (name, from, to) {
-        throw _DevTools.WarnImport("AnimationRange");
+        throw _WarnImport("AnimationRange");
     };
     Node._NodeConstructors = {};
     __decorate([
@@ -27066,6 +27390,7 @@ var Buffer = /** @class */ (function () {
         }
         if (this._engine._releaseBuffer(this._buffer)) {
             this._buffer = null;
+            this._data = null;
         }
     };
     return Buffer;
@@ -27099,9 +27424,6 @@ var VertexBuffer = /** @class */ (function () {
         if (data instanceof Buffer) {
             this._buffer = data;
             this._ownsBuffer = takeBufferOwnership;
-            if (takeBufferOwnership) {
-                this._buffer._increaseReferences();
-            }
         }
         else {
             this._buffer = new Buffer(engine, data, updatable, stride, postponeInternalCreation, instanced, useBytes);
@@ -27223,8 +27545,8 @@ var VertexBuffer = /** @class */ (function () {
         var tightlyPackedByteStride = this.getSize() * VertexBuffer.GetTypeByteLength(this.type);
         var count = totalVertices * this.getSize();
         if (this.type !== VertexBuffer.FLOAT || this.byteStride !== tightlyPackedByteStride) {
-            var copy_1 = [];
-            this.forEach(count, function (value) { return copy_1.push(value); });
+            var copy_1 = new Float32Array(count);
+            this.forEach(count, function (value, index) { return copy_1[index] = value; });
             return copy_1;
         }
         if (!(data instanceof Array || data instanceof Float32Array) || this.byteOffset !== 0 || data.length !== count) {
@@ -27569,6 +27891,7 @@ var VertexBuffer = /** @class */ (function () {
  */
 var VertexData = /** @class */ (function () {
     function VertexData() {
+        this._applyTo = makeSyncFunction(this._applyToCoroutine.bind(this));
     }
     /**
      * Uses the passed data array to set the set the values for the specified kind of data
@@ -27632,7 +27955,7 @@ var VertexData = /** @class */ (function () {
      * @returns the VertexData
      */
     VertexData.prototype.applyToMesh = function (mesh, updatable) {
-        this._applyTo(mesh, updatable);
+        this._applyTo(mesh, updatable, false);
         return this;
     };
     /**
@@ -27643,7 +27966,7 @@ var VertexData = /** @class */ (function () {
      * @returns VertexData
      */
     VertexData.prototype.applyToGeometry = function (geometry, updatable) {
-        this._applyTo(geometry, updatable);
+        this._applyTo(geometry, updatable, false);
         return this;
     };
     /**
@@ -27668,57 +27991,138 @@ var VertexData = /** @class */ (function () {
         this._update(geometry);
         return this;
     };
-    VertexData.prototype._applyTo = function (meshOrGeometry, updatable) {
+    /** @hidden */
+    VertexData.prototype._applyToCoroutine = function (meshOrGeometry, updatable, isAsync) {
         if (updatable === void 0) { updatable = false; }
-        if (this.positions) {
-            meshOrGeometry.setVerticesData(VertexBuffer.PositionKind, this.positions, updatable);
-        }
-        if (this.normals) {
-            meshOrGeometry.setVerticesData(VertexBuffer.NormalKind, this.normals, updatable);
-        }
-        if (this.tangents) {
-            meshOrGeometry.setVerticesData(VertexBuffer.TangentKind, this.tangents, updatable);
-        }
-        if (this.uvs) {
-            meshOrGeometry.setVerticesData(VertexBuffer.UVKind, this.uvs, updatable);
-        }
-        if (this.uvs2) {
-            meshOrGeometry.setVerticesData(VertexBuffer.UV2Kind, this.uvs2, updatable);
-        }
-        if (this.uvs3) {
-            meshOrGeometry.setVerticesData(VertexBuffer.UV3Kind, this.uvs3, updatable);
-        }
-        if (this.uvs4) {
-            meshOrGeometry.setVerticesData(VertexBuffer.UV4Kind, this.uvs4, updatable);
-        }
-        if (this.uvs5) {
-            meshOrGeometry.setVerticesData(VertexBuffer.UV5Kind, this.uvs5, updatable);
-        }
-        if (this.uvs6) {
-            meshOrGeometry.setVerticesData(VertexBuffer.UV6Kind, this.uvs6, updatable);
-        }
-        if (this.colors) {
-            meshOrGeometry.setVerticesData(VertexBuffer.ColorKind, this.colors, updatable);
-        }
-        if (this.matricesIndices) {
-            meshOrGeometry.setVerticesData(VertexBuffer.MatricesIndicesKind, this.matricesIndices, updatable);
-        }
-        if (this.matricesWeights) {
-            meshOrGeometry.setVerticesData(VertexBuffer.MatricesWeightsKind, this.matricesWeights, updatable);
-        }
-        if (this.matricesIndicesExtra) {
-            meshOrGeometry.setVerticesData(VertexBuffer.MatricesIndicesExtraKind, this.matricesIndicesExtra, updatable);
-        }
-        if (this.matricesWeightsExtra) {
-            meshOrGeometry.setVerticesData(VertexBuffer.MatricesWeightsExtraKind, this.matricesWeightsExtra, updatable);
-        }
-        if (this.indices) {
-            meshOrGeometry.setIndices(this.indices, null, updatable);
-        }
-        else {
-            meshOrGeometry.setIndices([], null);
-        }
-        return this;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    if (!this.positions) return [3 /*break*/, 2];
+                    meshOrGeometry.setVerticesData(VertexBuffer.PositionKind, this.positions, updatable);
+                    if (!isAsync) return [3 /*break*/, 2];
+                    return [4 /*yield*/];
+                case 1:
+                    _a.sent();
+                    _a.label = 2;
+                case 2:
+                    if (!this.normals) return [3 /*break*/, 4];
+                    meshOrGeometry.setVerticesData(VertexBuffer.NormalKind, this.normals, updatable);
+                    if (!isAsync) return [3 /*break*/, 4];
+                    return [4 /*yield*/];
+                case 3:
+                    _a.sent();
+                    _a.label = 4;
+                case 4:
+                    if (!this.tangents) return [3 /*break*/, 6];
+                    meshOrGeometry.setVerticesData(VertexBuffer.TangentKind, this.tangents, updatable);
+                    if (!isAsync) return [3 /*break*/, 6];
+                    return [4 /*yield*/];
+                case 5:
+                    _a.sent();
+                    _a.label = 6;
+                case 6:
+                    if (!this.uvs) return [3 /*break*/, 8];
+                    meshOrGeometry.setVerticesData(VertexBuffer.UVKind, this.uvs, updatable);
+                    if (!isAsync) return [3 /*break*/, 8];
+                    return [4 /*yield*/];
+                case 7:
+                    _a.sent();
+                    _a.label = 8;
+                case 8:
+                    if (!this.uvs2) return [3 /*break*/, 10];
+                    meshOrGeometry.setVerticesData(VertexBuffer.UV2Kind, this.uvs2, updatable);
+                    if (!isAsync) return [3 /*break*/, 10];
+                    return [4 /*yield*/];
+                case 9:
+                    _a.sent();
+                    _a.label = 10;
+                case 10:
+                    if (!this.uvs3) return [3 /*break*/, 12];
+                    meshOrGeometry.setVerticesData(VertexBuffer.UV3Kind, this.uvs3, updatable);
+                    if (!isAsync) return [3 /*break*/, 12];
+                    return [4 /*yield*/];
+                case 11:
+                    _a.sent();
+                    _a.label = 12;
+                case 12:
+                    if (!this.uvs4) return [3 /*break*/, 14];
+                    meshOrGeometry.setVerticesData(VertexBuffer.UV4Kind, this.uvs4, updatable);
+                    if (!isAsync) return [3 /*break*/, 14];
+                    return [4 /*yield*/];
+                case 13:
+                    _a.sent();
+                    _a.label = 14;
+                case 14:
+                    if (!this.uvs5) return [3 /*break*/, 16];
+                    meshOrGeometry.setVerticesData(VertexBuffer.UV5Kind, this.uvs5, updatable);
+                    if (!isAsync) return [3 /*break*/, 16];
+                    return [4 /*yield*/];
+                case 15:
+                    _a.sent();
+                    _a.label = 16;
+                case 16:
+                    if (!this.uvs6) return [3 /*break*/, 18];
+                    meshOrGeometry.setVerticesData(VertexBuffer.UV6Kind, this.uvs6, updatable);
+                    if (!isAsync) return [3 /*break*/, 18];
+                    return [4 /*yield*/];
+                case 17:
+                    _a.sent();
+                    _a.label = 18;
+                case 18:
+                    if (!this.colors) return [3 /*break*/, 20];
+                    meshOrGeometry.setVerticesData(VertexBuffer.ColorKind, this.colors, updatable);
+                    if (!isAsync) return [3 /*break*/, 20];
+                    return [4 /*yield*/];
+                case 19:
+                    _a.sent();
+                    _a.label = 20;
+                case 20:
+                    if (!this.matricesIndices) return [3 /*break*/, 22];
+                    meshOrGeometry.setVerticesData(VertexBuffer.MatricesIndicesKind, this.matricesIndices, updatable);
+                    if (!isAsync) return [3 /*break*/, 22];
+                    return [4 /*yield*/];
+                case 21:
+                    _a.sent();
+                    _a.label = 22;
+                case 22:
+                    if (!this.matricesWeights) return [3 /*break*/, 24];
+                    meshOrGeometry.setVerticesData(VertexBuffer.MatricesWeightsKind, this.matricesWeights, updatable);
+                    if (!isAsync) return [3 /*break*/, 24];
+                    return [4 /*yield*/];
+                case 23:
+                    _a.sent();
+                    _a.label = 24;
+                case 24:
+                    if (!this.matricesIndicesExtra) return [3 /*break*/, 26];
+                    meshOrGeometry.setVerticesData(VertexBuffer.MatricesIndicesExtraKind, this.matricesIndicesExtra, updatable);
+                    if (!isAsync) return [3 /*break*/, 26];
+                    return [4 /*yield*/];
+                case 25:
+                    _a.sent();
+                    _a.label = 26;
+                case 26:
+                    if (!this.matricesWeightsExtra) return [3 /*break*/, 28];
+                    meshOrGeometry.setVerticesData(VertexBuffer.MatricesWeightsExtraKind, this.matricesWeightsExtra, updatable);
+                    if (!isAsync) return [3 /*break*/, 28];
+                    return [4 /*yield*/];
+                case 27:
+                    _a.sent();
+                    _a.label = 28;
+                case 28:
+                    if (!this.indices) return [3 /*break*/, 31];
+                    meshOrGeometry.setIndices(this.indices, null, updatable);
+                    if (!isAsync) return [3 /*break*/, 30];
+                    return [4 /*yield*/];
+                case 29:
+                    _a.sent();
+                    _a.label = 30;
+                case 30: return [3 /*break*/, 32];
+                case 31:
+                    meshOrGeometry.setIndices([], null);
+                    _a.label = 32;
+                case 32: return [2 /*return*/, this];
+            }
+        });
     };
     VertexData.prototype._update = function (meshOrGeometry, updateExtends, makeItUnique) {
         if (this.positions) {
@@ -27837,73 +28241,171 @@ var VertexData = /** @class */ (function () {
      * @returns the modified VertexData
      */
     VertexData.prototype.merge = function (others, use32BitsIndices) {
-        var _a, _b, _c, _d;
         if (use32BitsIndices === void 0) { use32BitsIndices = false; }
-        this._validate();
-        others = Array.isArray(others) ? others : [others];
-        for (var _i = 0, others_1 = others; _i < others_1.length; _i++) {
-            var other = others_1[_i];
-            other._validate();
-            if (!this.normals !== !other.normals ||
-                !this.tangents !== !other.tangents ||
-                !this.uvs !== !other.uvs ||
-                !this.uvs2 !== !other.uvs2 ||
-                !this.uvs3 !== !other.uvs3 ||
-                !this.uvs4 !== !other.uvs4 ||
-                !this.uvs5 !== !other.uvs5 ||
-                !this.uvs6 !== !other.uvs6 ||
-                !this.colors !== !other.colors ||
-                !this.matricesIndices !== !other.matricesIndices ||
-                !this.matricesWeights !== !other.matricesWeights ||
-                !this.matricesIndicesExtra !== !other.matricesIndicesExtra ||
-                !this.matricesWeightsExtra !== !other.matricesWeightsExtra) {
-                throw new Error("Cannot merge vertex data that do not have the same set of attributes");
-            }
-        }
-        var totalIndices = others.reduce(function (indexSum, vertexData) { var _a, _b; return indexSum + ((_b = (_a = vertexData.indices) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0); }, (_b = (_a = this.indices) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0);
-        if (totalIndices > 0) {
-            var indicesOffset = (_d = (_c = this.indices) === null || _c === void 0 ? void 0 : _c.length) !== null && _d !== void 0 ? _d : 0;
-            if (!this.indices) {
-                this.indices = new Array(totalIndices);
-            }
-            if (this.indices.length !== totalIndices) {
-                if (Array.isArray(this.indices)) {
-                    this.indices.length = totalIndices;
-                }
-                else {
-                    var temp = use32BitsIndices || this.indices instanceof Uint32Array ? new Uint32Array(totalIndices) : new Uint16Array(totalIndices);
-                    temp.set(this.indices);
-                    this.indices = temp;
-                }
-            }
-            var positionsOffset = this.positions ? this.positions.length / 3 : 0;
-            for (var _e = 0, others_2 = others; _e < others_2.length; _e++) {
-                var other = others_2[_e];
-                if (other.indices) {
-                    for (var index = 0; index < other.indices.length; index++) {
+        return runCoroutineSync(this._mergeCoroutine(others, use32BitsIndices, false));
+    };
+    /** @hidden */
+    VertexData.prototype._mergeCoroutine = function (others, use32BitsIndices, isAsync) {
+        var _i, others_1, other, totalIndices, indicesOffset, temp, positionsOffset, _a, others_2, other, index;
+        var _b, _c, _d, _e;
+        if (use32BitsIndices === void 0) { use32BitsIndices = false; }
+        return __generator(this, function (_f) {
+            switch (_f.label) {
+                case 0:
+                    this._validate();
+                    others = Array.isArray(others) ? others : [others];
+                    for (_i = 0, others_1 = others; _i < others_1.length; _i++) {
+                        other = others_1[_i];
+                        other._validate();
+                        if (!this.normals !== !other.normals ||
+                            !this.tangents !== !other.tangents ||
+                            !this.uvs !== !other.uvs ||
+                            !this.uvs2 !== !other.uvs2 ||
+                            !this.uvs3 !== !other.uvs3 ||
+                            !this.uvs4 !== !other.uvs4 ||
+                            !this.uvs5 !== !other.uvs5 ||
+                            !this.uvs6 !== !other.uvs6 ||
+                            !this.colors !== !other.colors ||
+                            !this.matricesIndices !== !other.matricesIndices ||
+                            !this.matricesWeights !== !other.matricesWeights ||
+                            !this.matricesIndicesExtra !== !other.matricesIndicesExtra ||
+                            !this.matricesWeightsExtra !== !other.matricesWeightsExtra) {
+                            throw new Error("Cannot merge vertex data that do not have the same set of attributes");
+                        }
+                    }
+                    totalIndices = others.reduce(function (indexSum, vertexData) { var _a, _b; return indexSum + ((_b = (_a = vertexData.indices) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0); }, (_c = (_b = this.indices) === null || _b === void 0 ? void 0 : _b.length) !== null && _c !== void 0 ? _c : 0);
+                    if (!(totalIndices > 0)) return [3 /*break*/, 4];
+                    indicesOffset = (_e = (_d = this.indices) === null || _d === void 0 ? void 0 : _d.length) !== null && _e !== void 0 ? _e : 0;
+                    if (!this.indices) {
+                        this.indices = new Array(totalIndices);
+                    }
+                    if (this.indices.length !== totalIndices) {
+                        if (Array.isArray(this.indices)) {
+                            this.indices.length = totalIndices;
+                        }
+                        else {
+                            temp = use32BitsIndices || this.indices instanceof Uint32Array ? new Uint32Array(totalIndices) : new Uint16Array(totalIndices);
+                            temp.set(this.indices);
+                            this.indices = temp;
+                        }
+                    }
+                    positionsOffset = this.positions ? this.positions.length / 3 : 0;
+                    _a = 0, others_2 = others;
+                    _f.label = 1;
+                case 1:
+                    if (!(_a < others_2.length)) return [3 /*break*/, 4];
+                    other = others_2[_a];
+                    if (!other.indices) return [3 /*break*/, 3];
+                    for (index = 0; index < other.indices.length; index++) {
                         this.indices[indicesOffset + index] = other.indices[index] + positionsOffset;
                     }
                     // The call to _validate already checked for positions
                     positionsOffset += other.positions.length / 3;
                     indicesOffset += other.indices.length;
-                }
+                    if (!isAsync) return [3 /*break*/, 3];
+                    return [4 /*yield*/];
+                case 2:
+                    _f.sent();
+                    _f.label = 3;
+                case 3:
+                    _a++;
+                    return [3 /*break*/, 1];
+                case 4:
+                    this.positions = VertexData._mergeElement(this.positions, others.map(function (other) { return other.positions; }));
+                    if (!isAsync) return [3 /*break*/, 6];
+                    return [4 /*yield*/];
+                case 5:
+                    _f.sent();
+                    _f.label = 6;
+                case 6:
+                    this.normals = VertexData._mergeElement(this.normals, others.map(function (other) { return other.normals; }));
+                    if (!isAsync) return [3 /*break*/, 8];
+                    return [4 /*yield*/];
+                case 7:
+                    _f.sent();
+                    _f.label = 8;
+                case 8:
+                    this.tangents = VertexData._mergeElement(this.tangents, others.map(function (other) { return other.tangents; }));
+                    if (!isAsync) return [3 /*break*/, 10];
+                    return [4 /*yield*/];
+                case 9:
+                    _f.sent();
+                    _f.label = 10;
+                case 10:
+                    this.uvs = VertexData._mergeElement(this.uvs, others.map(function (other) { return other.uvs; }));
+                    if (!isAsync) return [3 /*break*/, 12];
+                    return [4 /*yield*/];
+                case 11:
+                    _f.sent();
+                    _f.label = 12;
+                case 12:
+                    this.uvs2 = VertexData._mergeElement(this.uvs2, others.map(function (other) { return other.uvs2; }));
+                    if (!isAsync) return [3 /*break*/, 14];
+                    return [4 /*yield*/];
+                case 13:
+                    _f.sent();
+                    _f.label = 14;
+                case 14:
+                    this.uvs3 = VertexData._mergeElement(this.uvs3, others.map(function (other) { return other.uvs3; }));
+                    if (!isAsync) return [3 /*break*/, 16];
+                    return [4 /*yield*/];
+                case 15:
+                    _f.sent();
+                    _f.label = 16;
+                case 16:
+                    this.uvs4 = VertexData._mergeElement(this.uvs4, others.map(function (other) { return other.uvs4; }));
+                    if (!isAsync) return [3 /*break*/, 18];
+                    return [4 /*yield*/];
+                case 17:
+                    _f.sent();
+                    _f.label = 18;
+                case 18:
+                    this.uvs5 = VertexData._mergeElement(this.uvs5, others.map(function (other) { return other.uvs5; }));
+                    if (!isAsync) return [3 /*break*/, 20];
+                    return [4 /*yield*/];
+                case 19:
+                    _f.sent();
+                    _f.label = 20;
+                case 20:
+                    this.uvs6 = VertexData._mergeElement(this.uvs6, others.map(function (other) { return other.uvs6; }));
+                    if (!isAsync) return [3 /*break*/, 22];
+                    return [4 /*yield*/];
+                case 21:
+                    _f.sent();
+                    _f.label = 22;
+                case 22:
+                    this.colors = VertexData._mergeElement(this.colors, others.map(function (other) { return other.colors; }));
+                    if (!isAsync) return [3 /*break*/, 24];
+                    return [4 /*yield*/];
+                case 23:
+                    _f.sent();
+                    _f.label = 24;
+                case 24:
+                    this.matricesIndices = VertexData._mergeElement(this.matricesIndices, others.map(function (other) { return other.matricesIndices; }));
+                    if (!isAsync) return [3 /*break*/, 26];
+                    return [4 /*yield*/];
+                case 25:
+                    _f.sent();
+                    _f.label = 26;
+                case 26:
+                    this.matricesWeights = VertexData._mergeElement(this.matricesWeights, others.map(function (other) { return other.matricesWeights; }));
+                    if (!isAsync) return [3 /*break*/, 28];
+                    return [4 /*yield*/];
+                case 27:
+                    _f.sent();
+                    _f.label = 28;
+                case 28:
+                    this.matricesIndicesExtra = VertexData._mergeElement(this.matricesIndicesExtra, others.map(function (other) { return other.matricesIndicesExtra; }));
+                    if (!isAsync) return [3 /*break*/, 30];
+                    return [4 /*yield*/];
+                case 29:
+                    _f.sent();
+                    _f.label = 30;
+                case 30:
+                    this.matricesWeightsExtra = VertexData._mergeElement(this.matricesWeightsExtra, others.map(function (other) { return other.matricesWeightsExtra; }));
+                    return [2 /*return*/, this];
             }
-        }
-        this.positions = VertexData._mergeElement(this.positions, others.map(function (other) { return other.positions; }));
-        this.normals = VertexData._mergeElement(this.normals, others.map(function (other) { return other.normals; }));
-        this.tangents = VertexData._mergeElement(this.tangents, others.map(function (other) { return other.tangents; }));
-        this.uvs = VertexData._mergeElement(this.uvs, others.map(function (other) { return other.uvs; }));
-        this.uvs2 = VertexData._mergeElement(this.uvs2, others.map(function (other) { return other.uvs2; }));
-        this.uvs3 = VertexData._mergeElement(this.uvs3, others.map(function (other) { return other.uvs3; }));
-        this.uvs4 = VertexData._mergeElement(this.uvs4, others.map(function (other) { return other.uvs4; }));
-        this.uvs5 = VertexData._mergeElement(this.uvs5, others.map(function (other) { return other.uvs5; }));
-        this.uvs6 = VertexData._mergeElement(this.uvs6, others.map(function (other) { return other.uvs6; }));
-        this.colors = VertexData._mergeElement(this.colors, others.map(function (other) { return other.colors; }));
-        this.matricesIndices = VertexData._mergeElement(this.matricesIndices, others.map(function (other) { return other.matricesIndices; }));
-        this.matricesWeights = VertexData._mergeElement(this.matricesWeights, others.map(function (other) { return other.matricesWeights; }));
-        this.matricesIndicesExtra = VertexData._mergeElement(this.matricesIndicesExtra, others.map(function (other) { return other.matricesIndicesExtra; }));
-        this.matricesWeightsExtra = VertexData._mergeElement(this.matricesWeightsExtra, others.map(function (other) { return other.matricesWeightsExtra; }));
-        return this;
+        });
     };
     VertexData._mergeElement = function (source, others) {
         var nonNullOthers = others.filter(function (other) { return other !== null && other !== undefined; });
@@ -28006,7 +28508,7 @@ var VertexData = /** @class */ (function () {
      * @returns a serialized object
      */
     VertexData.prototype.serialize = function () {
-        var serializationObject = this.serialize();
+        var serializationObject = {};
         if (this.positions) {
             serializationObject.positions = this.positions;
         }
@@ -28136,9 +28638,10 @@ var VertexData = /** @class */ (function () {
       * * uvs a linear array, of length 2 * number of vertices, of custom UV values, optional
       * * colors a linear array, of length 4 * number of vertices, of custom color values, optional
      * @returns the VertexData of the ribbon
+     * @deprecated use CreateRibbonVertexData instead
      */
     VertexData.CreateRibbon = function (options) {
-        throw _DevTools.WarnImport("ribbonBuilder");
+        throw _WarnImport("ribbonBuilder");
     };
     /**
      * Creates the VertexData for a box
@@ -28153,9 +28656,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the box
+     * @deprecated Please use CreateBoxVertexData from the BoxBuilder file instead
      */
     VertexData.CreateBox = function (options) {
-        throw _DevTools.WarnImport("boxBuilder");
+        throw _WarnImport("boxBuilder");
     };
     /**
      * Creates the VertexData for a tiled box
@@ -28165,9 +28669,10 @@ var VertexData = /** @class */ (function () {
       * * faceColors an array of 6 Color3 elements used to set different colors to each box side
       * * sideOrientation optional and takes the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
      * @returns the VertexData of the box
+     * @deprecated Please use CreateTiledBoxVertexData instead
      */
     VertexData.CreateTiledBox = function (options) {
-        throw _DevTools.WarnImport("tiledBoxBuilder");
+        throw _WarnImport("tiledBoxBuilder");
     };
     /**
      * Creates the VertexData for a tiled plane
@@ -28180,9 +28685,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the tiled plane
+     * @deprecated use CreateTiledPlaneVertexData instead
      */
     VertexData.CreateTiledPlane = function (options) {
-        throw _DevTools.WarnImport("tiledPlaneBuilder");
+        throw _WarnImport("tiledPlaneBuilder");
     };
     /**
      * Creates the VertexData for an ellipsoid, defaults to a sphere
@@ -28198,9 +28704,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the ellipsoid
+     * @deprecated use CreateSphereVertexData instead
      */
     VertexData.CreateSphere = function (options) {
-        throw _DevTools.WarnImport("sphereBuilder");
+        throw _WarnImport("sphereBuilder");
     };
     /**
      * Creates the VertexData for a cylinder, cone or prism
@@ -28220,9 +28727,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the cylinder, cone or prism
+     * @deprecated please use CreateCylinderVertexData instead
      */
     VertexData.CreateCylinder = function (options) {
-        throw _DevTools.WarnImport("cylinderBuilder");
+        throw _WarnImport("cylinderBuilder");
     };
     /**
      * Creates the VertexData for a torus
@@ -28234,9 +28742,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the torus
+     * @deprecated use CreateTorusVertexData instead
      */
     VertexData.CreateTorus = function (options) {
-        throw _DevTools.WarnImport("torusBuilder");
+        throw _WarnImport("torusBuilder");
     };
     /**
      * Creates the VertexData of the LineSystem
@@ -28244,9 +28753,10 @@ var VertexData = /** @class */ (function () {
      *  - lines an array of lines, each line being an array of successive Vector3
      *  - colors an array of line colors, each of the line colors being an array of successive Color4, one per line point
      * @returns the VertexData of the LineSystem
+     * @deprecated use CreateLineSystemVertexData instead
      */
     VertexData.CreateLineSystem = function (options) {
-        throw _DevTools.WarnImport("linesBuilder");
+        throw _WarnImport("linesBuilder");
     };
     /**
      * Create the VertexData for a DashedLines
@@ -28256,9 +28766,10 @@ var VertexData = /** @class */ (function () {
      *  - gapSize the size of the gap between two successive dashes relative to the dash number, optional, default 1
      *  - dashNb the intended total number of dashes, optional, default 200
      * @returns the VertexData for the DashedLines
+     * @deprecated use CreateDashedLinesVertexData instead
      */
     VertexData.CreateDashedLines = function (options) {
-        throw _DevTools.WarnImport("linesBuilder");
+        throw _WarnImport("linesBuilder");
     };
     /**
      * Creates the VertexData for a Ground
@@ -28267,9 +28778,10 @@ var VertexData = /** @class */ (function () {
      *  - height the height (z direction) of the ground, optional, default 1
      *  - subdivisions the number of subdivisions per side, optional, default 1
      * @returns the VertexData of the Ground
+     * @deprecated Please use CreateGroundVertexData instead
      */
     VertexData.CreateGround = function (options) {
-        throw _DevTools.WarnImport("groundBuilder");
+        throw _WarnImport("groundBuilder");
     };
     /**
      * Creates the VertexData for a TiledGround by subdividing the ground into tiles
@@ -28281,13 +28793,14 @@ var VertexData = /** @class */ (function () {
       * * subdivisions a javascript object {w: positive integer, h: positive integer}, `w` and `h` are the numbers of subdivisions on the ground width and height creating 'tiles', default {w: 6, h: 6}
       * * precision a javascript object {w: positive integer, h: positive integer}, `w` and `h` are the numbers of subdivisions on the tile width and height, default {w: 2, h: 2}
      * @returns the VertexData of the TiledGround
+     * @deprecated use CreateTiledGroundVertexData instead
      */
     VertexData.CreateTiledGround = function (options) {
-        throw _DevTools.WarnImport("groundBuilder");
+        throw _WarnImport("groundBuilder");
     };
     /**
      * Creates the VertexData of the Ground designed from a heightmap
-     * @param options an object used to set the following parameters for the Ground, required and provided by MeshBuilder.CreateGroundFromHeightMap
+     * @param options an object used to set the following parameters for the Ground, required and provided by CreateGroundFromHeightMap
       * * width the width (x direction) of the ground
       * * height the height (z direction) of the ground
       * * subdivisions the number of subdivisions per side
@@ -28299,9 +28812,10 @@ var VertexData = /** @class */ (function () {
       * * bufferHeight the height of image
       * * alphaFilter Remove any data where the alpha channel is below this value, defaults 0 (all data visible)
      * @returns the VertexData of the Ground designed from a heightmap
+     * @deprecated use CreateGroundFromHeightMapVertexData instead
      */
     VertexData.CreateGroundFromHeightMap = function (options) {
-        throw _DevTools.WarnImport("groundBuilder");
+        throw _WarnImport("groundBuilder");
     };
     /**
      * Creates the VertexData for a Plane
@@ -28313,9 +28827,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the box
+     * @deprecated use CreatePlaneVertexData instead
      */
     VertexData.CreatePlane = function (options) {
-        throw _DevTools.WarnImport("planeBuilder");
+        throw _WarnImport("planeBuilder");
     };
     /**
      * Creates the VertexData of the Disc or regular Polygon
@@ -28327,13 +28842,14 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the box
+     * @deprecated use CreateDiscVertexData instead
      */
     VertexData.CreateDisc = function (options) {
-        throw _DevTools.WarnImport("discBuilder");
+        throw _WarnImport("discBuilder");
     };
     /**
      * Creates the VertexData for an irregular Polygon in the XoZ plane using a mesh built by polygonTriangulation.build()
-     * All parameters are provided by MeshBuilder.CreatePolygon as needed
+     * All parameters are provided by CreatePolygon as needed
      * @param polygon a mesh built from polygonTriangulation.build()
      * @param sideOrientation takes the values Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
      * @param fUV an array of Vector4 elements used to set different images to the top, rings and bottom respectively
@@ -28342,9 +28858,10 @@ var VertexData = /** @class */ (function () {
      * @param backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @param wrap a boolean, default false, when true and fUVs used texture is wrapped around all sides, when false texture is applied side
      * @returns the VertexData of the Polygon
+     * @deprecated use CreatePolygonVertexData instead
      */
     VertexData.CreatePolygon = function (polygon, sideOrientation, fUV, fColors, frontUVs, backUVs, wrap) {
-        throw _DevTools.WarnImport("polygonBuilder");
+        throw _WarnImport("polygonBuilder");
     };
     /**
      * Creates the VertexData of the IcoSphere
@@ -28359,9 +28876,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the IcoSphere
+     * @deprecated use CreateIcoSphereVertexData instead
      */
     VertexData.CreateIcoSphere = function (options) {
-        throw _DevTools.WarnImport("icoSphereBuilder");
+        throw _WarnImport("icoSphereBuilder");
     };
     // inspired from // http://stemkoski.github.io/Three.js/Polyhedra.html
     /**
@@ -28383,58 +28901,16 @@ var VertexData = /** @class */ (function () {
      * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
      * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the Polyhedron
+     * @deprecated use CreatePolyhedronVertexData instead
      */
     VertexData.CreatePolyhedron = function (options) {
-        throw _DevTools.WarnImport("polyhedronBuilder");
+        throw _WarnImport("polyhedronBuilder");
     };
-    /**
-     * Creates the VertexData for a Geodesic Polyhedron
-     * @param options an object used to set the following optional parameters for the polyhedron, required but can be empty
-     * * m number of horizontal steps along an isogrid
-     * * n number of angled steps along an isogrid
-     * * size the size of the Geodesic, optional default 1
-     * * sizeX allows stretching in the x direction, optional, default size
-     * * sizeY allows stretching in the y direction, optional, default size
-     * * sizeZ allows stretching in the z direction, optional, default size
-     * * faceUV an array of Vector4 elements used to set different images to the top, rings and bottom respectively
-     * * faceColors an array of Color3 elements used to set different colors to the top, rings and bottom respectively
-     * * flat when true creates a flat shaded mesh, optional, default true
-     * * subdivisions increasing the subdivisions increases the number of faces, optional, default 4
-     * * sideOrientation optional and takes the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
-     * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
-     * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
-     * @returns the VertexData of the Polyhedron
-     */
-    VertexData.CreateGeodesic = function (options) {
-        throw _DevTools.WarnImport("geoBuilder");
-    };
-    /**
-     * Creates the Mesh for a Goldberg Polyhedron
-     * @param name defines the name of the mesh
-     * @param options an object used to set the following optional parameters for the polyhedron, required but can be empty
-     * * m number of horizontal steps along an isogrid
-     * * n number of angled steps along an isogrid
-     * * size the size of the Goldberg, optional default 1
-     * * sizeX allows stretching in the x direction, optional, default size
-     * * sizeY allows stretching in the y direction, optional, default size
-     * * sizeZ allows stretching in the z direction, optional, default size
-     * * faceUV an array of Vector4 elements used to set different images to the top, rings and bottom respectively
-     * * faceColors an array of Color3 elements used to set different colors to the top, rings and bottom respectively
-     * * subdivisions increasing the subdivisions increases the number of faces, optional, default 4
-     * * sideOrientation optional and takes the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
-     * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
-     * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
-     * @param goldBergData polyhedronData defining the Goldberg polyhedron
-     * @returns GoldbergSphere mesh
-     */
-    VertexData.CreateGoldberg = function (options, goldBergData) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    //
     /**
      * Creates the VertexData for a Capsule, inspired from https://github.com/maximeq/three-js-capsule-geometry/blob/master/src/CapsuleBufferGeometry.js
      * @param options an object used to set the following optional parameters for the capsule, required but can be empty
      * @returns the VertexData of the Capsule
+     * @deprecated Please use CreateCapsuleVertexData from the capsuleBuilder file instead
      */
     VertexData.CreateCapsule = function (options) {
         if (options === void 0) { options = {
@@ -28445,7 +28921,7 @@ var VertexData = /** @class */ (function () {
             radius: 0.25,
             capSubdivisions: 6
         }; }
-        throw _DevTools.WarnImport("capsuleBuilder");
+        throw _WarnImport("capsuleBuilder");
     };
     // based on http://code.google.com/p/away3d/source/browse/trunk/fp10/Away3D/src/away3d/primitives/TorusKnot.as?spec=svn2473&r=2473
     /**
@@ -28461,9 +28937,10 @@ var VertexData = /** @class */ (function () {
       * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
       * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
      * @returns the VertexData of the Torus Knot
+     * @deprecated use CreateTorusKnotVertexData instead
      */
     VertexData.CreateTorusKnot = function (options) {
-        throw _DevTools.WarnImport("torusKnotBuilder");
+        throw _WarnImport("torusKnotBuilder");
     };
     // Tools
     /**
@@ -28930,6 +29407,10 @@ var BoundingBox = /** @class */ (function () {
          * Gets the maximum vector in local space
          */
         this.maximum = Vector3.Zero();
+        /** @hidden */
+        this._drawWrapperFront = null;
+        /** @hidden */
+        this._drawWrapperBack = null;
         this.reConstruct(min, max, worldMatrix);
     }
     // Methods
@@ -29084,6 +29565,14 @@ var BoundingBox = /** @class */ (function () {
             return false;
         }
         return true;
+    };
+    /**
+     * Disposes the resources of the class
+     */
+    BoundingBox.prototype.dispose = function () {
+        var _a, _b;
+        (_a = this._drawWrapperFront) === null || _a === void 0 ? void 0 : _a.dispose();
+        (_b = this._drawWrapperBack) === null || _b === void 0 ? void 0 : _b.dispose();
     };
     // Statics
     /**
@@ -29716,10 +30205,6 @@ var SubMesh = /** @class */ (function () {
         this.verticesCount = verticesCount;
         this.indexStart = indexStart;
         this.indexCount = indexCount;
-        /** @hidden */
-        this._materialDefines = null; // fast access to _mainDrawWrapper.defines
-        /** @hidden */
-        this._materialEffect = null; // fast access to _mainDrawWrapper.effect
         this._mainDrawWrapperOverride = null;
         /** @hidden */
         this._linesIndexCount = 0;
@@ -29740,9 +30225,8 @@ var SubMesh = /** @class */ (function () {
         if (addToMesh) {
             mesh.subMeshes.push(this);
         }
-        this._drawWrappers = {};
-        this._mainDrawWrapper = new DrawWrapper(this._mesh.getScene().getEngine(), false);
-        this._drawWrappers["bjs_mainpass"] = this._mainDrawWrapper;
+        this._engine = this._mesh.getScene().getEngine();
+        this.resetDrawCache();
         this._trianglePlanes = [];
         this._id = mesh.subMeshes.length - 1;
         if (createBoundingBox) {
@@ -29755,42 +30239,46 @@ var SubMesh = /** @class */ (function () {
          * Gets material defines used by the effect associated to the sub mesh
          */
         get: function () {
-            return this._mainDrawWrapperOverride ? this._mainDrawWrapperOverride.defines : this._mainDrawWrapper.defines;
+            var _a;
+            return this._mainDrawWrapperOverride ? this._mainDrawWrapperOverride.defines : (_a = this._getDrawWrapper()) === null || _a === void 0 ? void 0 : _a.defines;
         },
         /**
          * Sets material defines used by the effect associated to the sub mesh
          */
         set: function (defines) {
             var _a;
-            var drawWrapper = (_a = this._mainDrawWrapperOverride) !== null && _a !== void 0 ? _a : this._mainDrawWrapper;
+            var drawWrapper = (_a = this._mainDrawWrapperOverride) !== null && _a !== void 0 ? _a : this._getDrawWrapper(undefined, true);
             drawWrapper.defines = defines;
-            this._materialDefines = defines;
         },
         enumerable: false,
         configurable: true
     });
     /** @hidden */
-    SubMesh.prototype._getDrawWrapper = function (name, createIfNotExisting) {
+    SubMesh.prototype._getDrawWrapper = function (passId, createIfNotExisting) {
         if (createIfNotExisting === void 0) { createIfNotExisting = false; }
-        if (name === "bjs_mainpass") {
-            return this._mainDrawWrapper;
+        passId = passId !== null && passId !== void 0 ? passId : this._engine.currentRenderPassId;
+        var drawWrapper = this._drawWrappers[passId];
+        if (!drawWrapper && createIfNotExisting) {
+            this._drawWrappers[passId] = drawWrapper = new DrawWrapper(this._mesh.getScene().getEngine());
         }
-        var customEffect = this._drawWrappers[name];
-        if (!customEffect && createIfNotExisting) {
-            this._drawWrappers[name] = customEffect = new DrawWrapper(this._mesh.getScene().getEngine());
-        }
-        return customEffect;
+        return drawWrapper;
     };
     /** @hidden */
-    SubMesh.prototype._removeEffect = function (name) {
-        delete this._drawWrappers[name];
+    SubMesh.prototype._removeDrawWrapper = function (passId, disposeWrapper) {
+        var _a;
+        if (disposeWrapper === void 0) { disposeWrapper = true; }
+        if (disposeWrapper) {
+            (_a = this._drawWrappers[passId]) === null || _a === void 0 ? void 0 : _a.dispose();
+        }
+        this._drawWrappers[passId] = undefined;
     };
     Object.defineProperty(SubMesh.prototype, "effect", {
         /**
          * Gets associated (main) effect (possibly the effect override if defined)
          */
         get: function () {
-            return this._mainDrawWrapperOverride ? this._mainDrawWrapperOverride.effect : this._mainDrawWrapper.effect;
+            var _a, _b;
+            return this._mainDrawWrapperOverride ? this._mainDrawWrapperOverride.effect : ((_b = (_a = this._getDrawWrapper()) === null || _a === void 0 ? void 0 : _a.effect) !== null && _b !== void 0 ? _b : null);
         },
         enumerable: false,
         configurable: true
@@ -29799,7 +30287,7 @@ var SubMesh = /** @class */ (function () {
         /** @hidden */
         get: function () {
             var _a;
-            return (_a = this._mainDrawWrapperOverride) !== null && _a !== void 0 ? _a : this._mainDrawWrapper;
+            return (_a = this._mainDrawWrapperOverride) !== null && _a !== void 0 ? _a : this._getDrawWrapper(undefined, true);
         },
         enumerable: false,
         configurable: true
@@ -29814,39 +30302,39 @@ var SubMesh = /** @class */ (function () {
     });
     /** @hidden */
     SubMesh.prototype._setMainDrawWrapperOverride = function (wrapper) {
-        var _a;
         this._mainDrawWrapperOverride = wrapper;
-        var drawWrapper = (_a = this._mainDrawWrapperOverride) !== null && _a !== void 0 ? _a : this._mainDrawWrapper;
-        this._materialEffect = drawWrapper.effect;
-        this._materialDefines = drawWrapper.defines;
     };
     /**
      * Sets associated effect (effect used to render this submesh)
      * @param effect defines the effect to associate with
      * @param defines defines the set of defines used to compile this effect
      * @param materialContext material context associated to the effect
-     * @param resetMaterialContext true to reset the material context (if defined)
+     * @param resetContext true to reset the draw context
      */
-    SubMesh.prototype.setEffect = function (effect, defines, materialContext, resetMaterialContext) {
-        var _a;
+    SubMesh.prototype.setEffect = function (effect, defines, materialContext, resetContext) {
         if (defines === void 0) { defines = null; }
-        if (resetMaterialContext === void 0) { resetMaterialContext = true; }
-        var drawWrapper = (_a = this._mainDrawWrapperOverride) !== null && _a !== void 0 ? _a : this._mainDrawWrapper;
-        drawWrapper.setEffect(effect, defines);
+        if (resetContext === void 0) { resetContext = true; }
+        var drawWrapper = this._drawWrapper;
+        drawWrapper.setEffect(effect, defines, resetContext);
         if (materialContext !== undefined) {
             drawWrapper.materialContext = materialContext;
-            if (resetMaterialContext) {
-                materialContext.reset();
-            }
         }
-        if (effect !== this._materialEffect) {
-            this._materialEffect = effect;
-            this._materialDefines = defines;
-        }
-        else if (!effect) {
-            this._materialDefines = null;
+        if (!effect) {
+            drawWrapper.defines = null;
             drawWrapper.materialContext = undefined;
         }
+    };
+    /**
+     * Resets the draw wrappers cache
+     */
+    SubMesh.prototype.resetDrawCache = function () {
+        if (this._drawWrappers) {
+            for (var _i = 0, _a = this._drawWrappers; _i < _a.length; _i++) {
+                var drawWrapper = _a[_i];
+                drawWrapper === null || drawWrapper === void 0 ? void 0 : drawWrapper.dispose();
+            }
+        }
+        this._drawWrappers = [];
     };
     /**
      * Add a new submesh to a mesh
@@ -29928,7 +30416,8 @@ var SubMesh = /** @class */ (function () {
      * @returns null or the current material
      */
     SubMesh.prototype.getMaterial = function () {
-        var rootMaterial = this._renderingMesh.material;
+        var _a;
+        var rootMaterial = (_a = this._renderingMesh.getMaterialForRenderPass(this._engine.currentRenderPassId)) !== null && _a !== void 0 ? _a : this._renderingMesh.material;
         if (rootMaterial === null || rootMaterial === undefined) {
             return this._mesh.getScene().defaultMaterial;
         }
@@ -29936,7 +30425,7 @@ var SubMesh = /** @class */ (function () {
             var effectiveMaterial = rootMaterial.getSubMaterial(this.materialIndex);
             if (this._currentMaterial !== effectiveMaterial) {
                 this._currentMaterial = effectiveMaterial;
-                this._mainDrawWrapper.defines = null;
+                this.resetDrawCache();
             }
             return effectiveMaterial;
         }
@@ -30252,6 +30741,7 @@ var SubMesh = /** @class */ (function () {
         // Remove from mesh
         var index = this._mesh.subMeshes.indexOf(this);
         this._mesh.subMeshes.splice(index, 1);
+        this.resetDrawCache();
     };
     /**
      * Gets the class name
@@ -30565,6 +31055,9 @@ var Geometry = /** @class */ (function () {
         var kind = buffer.getKind();
         if (this._vertexBuffers[kind] && disposeExistingBuffer) {
             this._vertexBuffers[kind].dispose();
+        }
+        if (buffer._buffer) {
+            buffer._buffer._increaseReferences();
         }
         this._vertexBuffers[kind] = buffer;
         var meshes = this._meshes;
@@ -30939,10 +31432,6 @@ var Geometry = /** @class */ (function () {
             if (numOfMeshes === 1) {
                 this._vertexBuffers[kind].create();
             }
-            var buffer = this._vertexBuffers[kind].getBuffer();
-            if (buffer) {
-                buffer.references = numOfMeshes;
-            }
             if (kind === VertexBuffer.PositionKind) {
                 if (!this._extend) {
                     this._updateExtend();
@@ -30956,9 +31445,6 @@ var Geometry = /** @class */ (function () {
         // indexBuffer
         if (numOfMeshes === 1 && this._indices && this._indices.length > 0) {
             this._indexBuffer = this._engine.createIndexBuffer(this._indices, this._updatable);
-        }
-        if (this._indexBuffer) {
-            this._indexBuffer.references = numOfMeshes;
         }
         // morphTargets
         mesh._syncGeometryWithMorphTargetManager();
@@ -31187,6 +31673,7 @@ var Geometry = /** @class */ (function () {
     Geometry.prototype.serialize = function () {
         var serializationObject = {};
         serializationObject.id = this.id;
+        serializationObject.uniqueId = this.uniqueId;
         serializationObject.updatable = this._updatable;
         if (Tags && Tags.HasTags(this)) {
             serializationObject.tags = Tags.GetTags(this);
@@ -31199,6 +31686,22 @@ var Geometry = /** @class */ (function () {
         }
         else {
             return Array.prototype.slice.call(origin);
+        }
+    };
+    /**
+     * Release any memory retained by the cached data on the Geometry.
+     *
+     * Call this function to reduce memory footprint of the mesh.
+     * Vertex buffers will not store CPU data anymore (this will prevent picking, collisions or physics to work correctly)
+     */
+    Geometry.prototype.clearCachedData = function () {
+        this._indices = [];
+        this._resetPointsArrayCache();
+        for (var vbName in this._vertexBuffers) {
+            if (!this._vertexBuffers.hasOwnProperty(vbName)) {
+                continue;
+            }
+            this._vertexBuffers[vbName]._buffer._data = null;
         }
     };
     /**
@@ -31220,9 +31723,9 @@ var Geometry = /** @class */ (function () {
             }
         }
         if (this.isVerticesDataPresent(VertexBuffer.TangentKind)) {
-            serializationObject.tangets = this.toNumberArray(this.getVerticesData(VertexBuffer.TangentKind));
+            serializationObject.tangents = this.toNumberArray(this.getVerticesData(VertexBuffer.TangentKind));
             if (this.isVertexBufferUpdatable(VertexBuffer.TangentKind)) {
-                serializationObject.tangets._updatable = true;
+                serializationObject.tangents._updatable = true;
             }
         }
         if (this.isVerticesDataPresent(VertexBuffer.UVKind)) {
@@ -31307,13 +31810,22 @@ var Geometry = /** @class */ (function () {
     Geometry.RandomId = function () {
         return Tools.RandomId();
     };
+    Geometry._GetGeometryByLoadedUniqueId = function (uniqueId, scene) {
+        for (var index = 0; index < scene.geometries.length; index++) {
+            if (scene.geometries[index]._loadedUniqueId === uniqueId) {
+                return scene.geometries[index];
+            }
+        }
+        return null;
+    };
     /** @hidden */
     Geometry._ImportGeometry = function (parsedGeometry, mesh) {
         var scene = mesh.getScene();
         // Geometry
+        var geometryUniqueId = parsedGeometry.geometryUniqueId;
         var geometryId = parsedGeometry.geometryId;
-        if (geometryId) {
-            var geometry = scene.getGeometryById(geometryId);
+        if (geometryUniqueId || geometryId) {
+            var geometry = geometryUniqueId ? this._GetGeometryByLoadedUniqueId(geometryUniqueId, scene) : scene.getGeometryById(geometryId);
             if (geometry) {
                 geometry.applyToMesh(mesh);
             }
@@ -31571,10 +32083,8 @@ var Geometry = /** @class */ (function () {
      * @returns the new geometry object
      */
     Geometry.Parse = function (parsedVertexData, scene, rootUrl) {
-        if (scene.getGeometryById(parsedVertexData.id)) {
-            return null; // null since geometry could be something else than a box...
-        }
         var geometry = new Geometry(parsedVertexData.id, scene, undefined, parsedVertexData.updatable);
+        geometry._loadedUniqueId = parsedVertexData.uniqueId;
         if (Tags) {
             Tags.AddTagsTo(geometry, parsedVertexData.tags);
         }
@@ -32076,6 +32586,11 @@ ThinEngine.prototype.setAlphaMode = function (mode, noDepthWriteChange) {
             this._alphaState.setAlphaBlendFunctionParameters(this._gl.ONE_MINUS_DST_COLOR, this._gl.ONE_MINUS_SRC_COLOR, this._gl.ZERO, this._gl.ONE);
             this._alphaState.alphaBlend = true;
             break;
+        case 17:
+            // Same as ALPHA_COMBINE but accumulates (1 - alpha) values in the alpha channel for a later readout in order independant transparency
+            this._alphaState.setAlphaBlendFunctionParameters(this._gl.SRC_ALPHA, this._gl.ONE_MINUS_SRC_ALPHA, this._gl.ONE, this._gl.ONE_MINUS_SRC_ALPHA);
+            this._alphaState.alphaBlend = true;
+            break;
     }
     if (!noDepthWriteChange) {
         this.depthCullingState.depthMask = (mode === 0);
@@ -32091,22 +32606,22 @@ ThinEngine.prototype.setAlphaEquation = function (equation) {
     }
     switch (equation) {
         case 0:
-            this._alphaState.setAlphaEquationParameters(this._gl.FUNC_ADD, this._gl.FUNC_ADD);
+            this._alphaState.setAlphaEquationParameters(32774, 32774);
             break;
         case 1:
-            this._alphaState.setAlphaEquationParameters(this._gl.FUNC_SUBTRACT, this._gl.FUNC_SUBTRACT);
+            this._alphaState.setAlphaEquationParameters(32778, 32778);
             break;
         case 2:
-            this._alphaState.setAlphaEquationParameters(this._gl.FUNC_REVERSE_SUBTRACT, this._gl.FUNC_REVERSE_SUBTRACT);
+            this._alphaState.setAlphaEquationParameters(32779, 32779);
             break;
         case 3:
-            this._alphaState.setAlphaEquationParameters(this._gl.MAX, this._gl.MAX);
+            this._alphaState.setAlphaEquationParameters(32776, 32776);
             break;
         case 4:
-            this._alphaState.setAlphaEquationParameters(this._gl.MIN, this._gl.MIN);
+            this._alphaState.setAlphaEquationParameters(32775, 32775);
             break;
         case 5:
-            this._alphaState.setAlphaEquationParameters(this._gl.MIN, this._gl.FUNC_ADD);
+            this._alphaState.setAlphaEquationParameters(32775, 32774);
             break;
     }
     this._alphaEquation = equation;
@@ -32392,15 +32907,22 @@ var Engine$1 = /** @class */ (function (_super) {
          */
         _this.disablePerformanceMonitorInBackground = false;
         _this._performanceMonitor = new PerformanceMonitor();
+        _this._compatibilityMode = true;
+        /**
+         * Gets or sets the current render pass id
+         */
+        _this.currentRenderPassId = 0;
+        _this._renderPassNames = ["main"];
         Engine.Instances.push(_this);
         if (!canvasOrContext) {
             return _this;
         }
+        _this._features.supportRenderPasses = true;
         options = _this._creationOptions;
         if (canvasOrContext.getContext) {
             var canvas_1 = canvasOrContext;
             _this._sharedInit(canvas_1, !!options.doNotHandleTouchAction, options.audioEngine);
-            if (DomManagement.IsWindowObjectExist()) {
+            if (IsWindowObjectExist()) {
                 var anyDoc_1 = document;
                 // Fullscreen
                 _this._onFullscreenChange = function () {
@@ -32551,7 +33073,7 @@ var Engine$1 = /** @class */ (function (_super) {
      * @returns The loading screen
      */
     Engine.DefaultLoadingScreenFactory = function (canvas) {
-        throw _DevTools.WarnImport("LoadingScreen");
+        throw _WarnImport("LoadingScreen");
     };
     Object.defineProperty(Engine.prototype, "_supportsHardwareTextureRescaling", {
         get: function () {
@@ -32567,6 +33089,22 @@ var Engine$1 = /** @class */ (function (_super) {
          */
         get: function () {
             return this._performanceMonitor;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Engine.prototype, "compatibilityMode", {
+        /**
+         * (WebGPU only) True (default) to be in compatibility mode, meaning rendering all existing scenes without artifacts (same rendering than WebGL).
+         * Setting the property to false will improve performances but may not work in some scenes if some precautions are not taken.
+         * See @TODO WEBGPU DOC PAGE for more details
+         */
+        get: function () {
+            return this._compatibilityMode;
+        },
+        set: function (mode) {
+            // not supported in WebGL
+            this._compatibilityMode = true;
         },
         enumerable: false,
         configurable: true
@@ -32609,9 +33147,18 @@ var Engine$1 = /** @class */ (function (_super) {
             _this._windowIsBackground = false;
         };
         this._onCanvasPointerOut = function (ev) {
-            _this.onCanvasPointerOutObservable.notifyObservers(ev);
+            // Check for canvas and if there is a canvas, make sure that this callback is only fired when the cursor exits the canvas
+            // Note: This is a workaround for a bug with Safari
+            var rect = _this.getInputElementClientRect();
+            if (rect) {
+                var pointerX = ev.clientX - rect.left;
+                var pointerY = ev.clientY - rect.top;
+                if (pointerX < 0 || pointerX > rect.width || pointerY < 0 || pointerY > rect.height) {
+                    _this.onCanvasPointerOutObservable.notifyObservers(ev);
+                }
+            }
         };
-        if (DomManagement.IsWindowObjectExist()) {
+        if (IsWindowObjectExist()) {
             var hostWindow = this.getHostWindow();
             if (hostWindow) {
                 hostWindow.addEventListener("blur", this._onBlur);
@@ -32978,6 +33525,7 @@ var Engine$1 = /** @class */ (function (_super) {
         var gl = this._gl;
         gl.disable(gl.SCISSOR_TEST);
     };
+    /** @hidden */
     Engine.prototype._reportDrawCall = function (numDrawCalls) {
         if (numDrawCalls === void 0) { numDrawCalls = 1; }
         this._drawCalls.addCount(numDrawCalls, false);
@@ -32988,7 +33536,7 @@ var Engine$1 = /** @class */ (function (_super) {
      * @returns The onVRDisplayChangedObservable
      */
     Engine.prototype.initWebVR = function () {
-        throw _DevTools.WarnImport("WebVRCamera");
+        throw _WarnImport("WebVRCamera");
     };
     /** @hidden */
     Engine.prototype._prepareVRComponent = function () {
@@ -33342,6 +33890,50 @@ var Engine$1 = /** @class */ (function (_super) {
         });
     };
     /**
+     * Gets the names of the render passes that are currently created
+     * @returns list of the render pass names
+     */
+    Engine.prototype.getRenderPassNames = function () {
+        return this._renderPassNames;
+    };
+    /**
+     * Gets the name of the current render pass
+     * @returns name of the current render pass
+     */
+    Engine.prototype.getCurrentRenderPassName = function () {
+        return this._renderPassNames[this.currentRenderPassId];
+    };
+    /**
+     * Creates a render pass id
+     * @param name Name of the render pass (for debug purpose only)
+     * @returns the id of the new render pass
+     */
+    Engine.prototype.createRenderPassId = function (name) {
+        // Note: render pass id == 0 is always for the main render pass
+        var id = ++Engine._RenderPassIdCounter;
+        this._renderPassNames[id] = name !== null && name !== void 0 ? name : "NONAME";
+        return id;
+    };
+    /**
+     * Releases a render pass id
+     * @param id id of the render pass to release
+     */
+    Engine.prototype.releaseRenderPassId = function (id) {
+        this._renderPassNames[id] = undefined;
+        for (var s = 0; s < this.scenes.length; ++s) {
+            var scene = this.scenes[s];
+            for (var m = 0; m < scene.meshes.length; ++m) {
+                var mesh = scene.meshes[m];
+                if (mesh.subMeshes) {
+                    for (var b = 0; b < mesh.subMeshes.length; ++b) {
+                        var subMesh = mesh.subMeshes[b];
+                        subMesh._removeDrawWrapper(id);
+                    }
+                }
+            }
+        }
+    };
+    /**
      * @hidden
      * Rescales a texture
      * @param source input texture
@@ -33369,6 +33961,7 @@ var Engine$1 = /** @class */ (function (_super) {
         if (!this._rescalePostProcess && Engine._RescalePostProcessFactory) {
             this._rescalePostProcess = Engine._RescalePostProcessFactory(this);
         }
+        this._rescalePostProcess.externalTextureSamplerBinding = true;
         this._rescalePostProcess.getEffect().executeWhenCompiled(function () {
             _this._rescalePostProcess.onApply = function (effect) {
                 effect._bindTexture("textureSampler", source);
@@ -33478,6 +34071,7 @@ var Engine$1 = /** @class */ (function (_super) {
         result.capacity = capacity;
         this.bindArrayBuffer(result);
         this._gl.bufferData(this._gl.ARRAY_BUFFER, capacity, this._gl.DYNAMIC_DRAW);
+        result.references = 1;
         return result;
     };
     /**
@@ -33562,7 +34156,7 @@ var Engine$1 = /** @class */ (function (_super) {
             this.deviceInputSystem.dispose();
         }
         // Events
-        if (DomManagement.IsWindowObjectExist()) {
+        if (IsWindowObjectExist()) {
             window.removeEventListener("blur", this._onBlur);
             window.removeEventListener("focus", this._onFocus);
             if (this._renderingCanvas) {
@@ -33570,7 +34164,7 @@ var Engine$1 = /** @class */ (function (_super) {
                 this._renderingCanvas.removeEventListener("blur", this._onCanvasBlur);
                 this._renderingCanvas.removeEventListener("pointerout", this._onCanvasPointerOut);
             }
-            if (DomManagement.IsDocumentAvailable()) {
+            if (IsDocumentAvailable()) {
                 document.removeEventListener("fullscreenchange", this._onFullscreenChange);
                 document.removeEventListener("mozfullscreenchange", this._onFullscreenChange);
                 document.removeEventListener("webkitfullscreenchange", this._onFullscreenChange);
@@ -33609,7 +34203,7 @@ var Engine$1 = /** @class */ (function (_super) {
      * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     Engine.prototype.displayLoadingUI = function () {
-        if (!DomManagement.IsWindowObjectExist()) {
+        if (!IsWindowObjectExist()) {
             return;
         }
         var loadingScreen = this.loadingScreen;
@@ -33622,7 +34216,7 @@ var Engine$1 = /** @class */ (function (_super) {
      * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     Engine.prototype.hideLoadingUI = function () {
-        if (!DomManagement.IsWindowObjectExist()) {
+        if (!IsWindowObjectExist()) {
             return;
         }
         var loadingScreen = this._loadingScreen;
@@ -33730,6 +34324,37 @@ var Engine$1 = /** @class */ (function (_super) {
         else if (anyDoc.msCancelFullScreen) {
             anyDoc.msCancelFullScreen();
         }
+    };
+    /**
+     * Get Font size information
+     * @param font font name
+     * @return an object containing ascent, height and descent
+     */
+    Engine.prototype.getFontOffset = function (font) {
+        var text = document.createElement("span");
+        text.innerHTML = "Hg";
+        text.setAttribute('style', "font: " + font + " !important");
+        var block = document.createElement("div");
+        block.style.display = "inline-block";
+        block.style.width = "1px";
+        block.style.height = "0px";
+        block.style.verticalAlign = "bottom";
+        var div = document.createElement("div");
+        div.style.whiteSpace = "nowrap";
+        div.appendChild(text);
+        div.appendChild(block);
+        document.body.appendChild(div);
+        var fontAscent = 0;
+        var fontHeight = 0;
+        try {
+            fontHeight = block.getBoundingClientRect().top - text.getBoundingClientRect().top;
+            block.style.verticalAlign = "baseline";
+            fontAscent = block.getBoundingClientRect().top - text.getBoundingClientRect().top;
+        }
+        finally {
+            document.body.removeChild(div);
+        }
+        return { ascent: fontAscent, height: fontHeight, descent: fontHeight - fontAscent };
     };
     // Const statics
     /** Defines that alpha blending is disabled */
@@ -33927,6 +34552,7 @@ var Engine$1 = /** @class */ (function (_super) {
      * Method called to create the default rescale post process on each engine.
      */
     Engine._RescalePostProcessFactory = null;
+    Engine._RenderPassIdCounter = 0;
     return Engine;
 }(ThinEngine));
 
@@ -33985,7 +34611,6 @@ var TransformNode = /** @class */ (function (_super) {
         _this._rotation = Vector3.Zero();
         _this._rotationQuaternion = null;
         _this._scaling = Vector3.One();
-        _this._isDirty = false;
         _this._transformToBoneReferal = null;
         _this._isAbsoluteSynced = false;
         _this._billboardMode = TransformNode.BILLBOARDMODE_NONE;
@@ -34247,16 +34872,6 @@ var TransformNode = /** @class */ (function (_super) {
         cache.localMatrixUpdated = false;
         cache.billboardMode = -1;
         cache.infiniteDistance = false;
-    };
-    /**
-    * Flag the transform node as dirty (Forcing it to update everything)
-    * @param property if set to "rotation" the objects rotationQuaternion will be set to null
-    * @returns this transform node
-    */
-    TransformNode.prototype.markAsDirty = function (property) {
-        this._currentRenderId = Number.MAX_VALUE;
-        this._isDirty = true;
-        return this;
     };
     Object.defineProperty(TransformNode.prototype, "absolutePosition", {
         /**
@@ -34632,13 +35247,31 @@ var TransformNode = /** @class */ (function (_super) {
         return this;
     };
     /**
+    * Flag the transform node as dirty (Forcing it to update everything)
+    * @param property if set to "rotation" the objects rotationQuaternion will be set to null
+    * @returns this  node
+    */
+    TransformNode.prototype.markAsDirty = function (property) {
+        // We need to explicitely update the children
+        // as the scene.evaluateActiveMeshes will not poll the transform nodes
+        if (this._children) {
+            for (var _i = 0, _a = this._children; _i < _a.length; _i++) {
+                var child = _a[_i];
+                child.markAsDirty(property);
+            }
+        }
+        return _super.prototype.markAsDirty.call(this, property);
+    };
+    /**
      * Defines the passed node as the parent of the current node.
      * The node will remain exactly where it is and its position / rotation will be updated accordingly
      * @see https://doc.babylonjs.com/how_to/parenting
      * @param node the node ot set as the parent
+     * @param preserveScalingSign if true, keep scaling sign of child. Otherwise, scaling sign might change.
      * @returns this TransformNode.
      */
-    TransformNode.prototype.setParent = function (node) {
+    TransformNode.prototype.setParent = function (node, preserveScalingSign) {
+        if (preserveScalingSign === void 0) { preserveScalingSign = false; }
         if (!node && !this.parent) {
             return this;
         }
@@ -34647,7 +35280,7 @@ var TransformNode = /** @class */ (function (_super) {
         var scale = TmpVectors.Vector3[1];
         if (!node) {
             this.computeWorldMatrix(true);
-            this.getWorldMatrix().decompose(scale, quatRotation, position);
+            this.getWorldMatrix().decompose(scale, quatRotation, position, preserveScalingSign ? this : undefined);
         }
         else {
             var diffMatrix = TmpVectors.Matrix[0];
@@ -34656,7 +35289,7 @@ var TransformNode = /** @class */ (function (_super) {
             node.computeWorldMatrix(true);
             node.getWorldMatrix().invertToRef(invParentMatrix);
             this.getWorldMatrix().multiplyToRef(invParentMatrix, diffMatrix);
-            diffMatrix.decompose(scale, quatRotation, position);
+            diffMatrix.decompose(scale, quatRotation, position, preserveScalingSign ? this : undefined);
         }
         if (this.rotationQuaternion) {
             this.rotationQuaternion.copyFrom(quatRotation);
@@ -34890,7 +35523,7 @@ var TransformNode = /** @class */ (function (_super) {
         cache.billboardMode = this.billboardMode;
         cache.infiniteDistance = this.infiniteDistance;
         this._currentRenderId = currentRenderId;
-        this._childUpdateId++;
+        this._childUpdateId += 1;
         this._isDirty = false;
         this._position._isDirty = false;
         this._rotation._isDirty = false;
@@ -35151,15 +35784,16 @@ var TransformNode = /** @class */ (function (_super) {
     TransformNode.prototype.serialize = function (currentSerializationObject) {
         var serializationObject = SerializationHelper.Serialize(this, currentSerializationObject);
         serializationObject.type = this.getClassName();
+        serializationObject.uniqueId = this.uniqueId;
         // Parent
         if (this.parent) {
-            serializationObject.parentId = this.parent.id;
+            serializationObject.parentId = this.parent.uniqueId;
         }
         serializationObject.localMatrix = this.getPivotMatrix().asArray();
         serializationObject.isEnabled = this.isEnabled();
         // Parent
         if (this.parent) {
-            serializationObject.parentId = this.parent.id;
+            serializationObject.parentId = this.parent.uniqueId;
         }
         return serializationObject;
     };
@@ -35373,13 +36007,22 @@ var PickingInfo = /** @class */ (function () {
         /** If we are picking a mesh with thin instance, this will give you the picked thin instance */
         this.thinInstanceIndex = -1;
         /**
+         * The ray that was used to perform the picking.
+         */
+        this.ray = null;
+        /**
          * If a mesh was used to do the picking (eg. 6dof controller) as a "near interaction", this will be populated.
          */
         this.originMesh = null;
         /**
-         * The ray that was used to perform the picking.
+         * The aim-space transform of the input used for picking, if it is an XR input source.
          */
-        this.ray = null;
+        this.aimTransform = null;
+        /**
+         * The grip-space transform of the input used for picking, if it is an XR input source.
+         * Some XR sources, such as input coming from head mounted displays, do not have this.
+         */
+        this.gripTransform = null;
     }
     /**
      * Gets the normal corresponding to the face the pick collided with
@@ -35899,7 +36542,7 @@ var UniformBuffer = /** @class */ (function () {
      * Otherwise, the buffer will be updated only if the cache differs.
      */
     UniformBuffer.prototype.update = function () {
-        var _a;
+        this.bindUniformBuffer();
         if (!this._buffer) {
             this.create();
             return;
@@ -35908,7 +36551,7 @@ var UniformBuffer = /** @class */ (function () {
             this._createBufferOnWrite = this._engine._features.trackUbosInFrame;
             return;
         }
-        if ((_a = this._buffers) === null || _a === void 0 ? void 0 : _a[this._bufferIndex][1]) {
+        if (this._buffers && this._buffers.length > 1 && this._buffers[this._bufferIndex][1]) {
             if (this._buffersEqual(this._bufferData, this._buffers[this._bufferIndex][1])) {
                 this._needSync = false;
                 this._createBufferOnWrite = this._engine._features.trackUbosInFrame;
@@ -35938,9 +36581,6 @@ var UniformBuffer = /** @class */ (function () {
         else {
             this._rebuild();
         }
-        if (this._currentEffect && this._buffer) {
-            this._currentEffect.bindUniformBuffer(this._buffer, this._currentEffectName);
-        }
     };
     UniformBuffer.prototype._checkNewFrame = function () {
         if (this._engine._features.trackUbosInFrame && this._currentFrameId !== this._engine.frameId) {
@@ -35953,9 +36593,6 @@ var UniformBuffer = /** @class */ (function () {
             }
             else {
                 this._bufferIndex = -1;
-            }
-            if (this._currentEffect && this._buffer) {
-                this._currentEffect.bindUniformBuffer(this._buffer, this._currentEffectName);
             }
         }
     };
@@ -36265,17 +36902,28 @@ var UniformBuffer = /** @class */ (function () {
         this.update();
     };
     /**
-     * Binds this uniform buffer to an effect.
-     * @param effect Define the effect to bind the buffer to
+     * Associates an effect to this uniform buffer
+     * @param effect Define the effect to associate the buffer to
      * @param name Name of the uniform block in the shader.
      */
     UniformBuffer.prototype.bindToEffect = function (effect, name) {
         this._currentEffect = effect;
         this._currentEffectName = name;
-        if (this._noUBO || !this._buffer) {
-            return;
+    };
+    /**
+     * Binds the current (GPU) buffer to the effect
+     */
+    UniformBuffer.prototype.bindUniformBuffer = function () {
+        if (!this._noUBO && this._buffer && this._currentEffect) {
+            this._currentEffect.bindUniformBuffer(this._buffer, this._currentEffectName);
         }
-        effect.bindUniformBuffer(this._buffer, name);
+    };
+    /**
+     * Dissociates the current effect from this uniform buffer
+     */
+    UniformBuffer.prototype.unbindEffect = function () {
+        this._currentEffect = undefined;
+        this._currentEffectName = undefined;
     };
     /**
      * Disposes the uniform buffer.
@@ -36372,6 +37020,7 @@ var _InternalAbstractMeshDataInfo = /** @class */ (function () {
         this._collisionRetryCount = 3;
         this._morphTargetManager = null;
         this._renderingGroupId = 0;
+        this._bakedVertexAnimationManager = null;
         this._material = null;
         this._positions = null;
         // Collisions
@@ -36716,6 +37365,24 @@ var AbstractMesh = /** @class */ (function (_super) {
         enumerable: false,
         configurable: true
     });
+    Object.defineProperty(AbstractMesh.prototype, "bakedVertexAnimationManager", {
+        /**
+         * Gets or sets the baked vertex animation manager
+         * @see https://doc.babylonjs.com/divingDeeper/animation/baked_texture_animations
+         */
+        get: function () {
+            return this._internalAbstractMeshDataInfo._bakedVertexAnimationManager;
+        },
+        set: function (value) {
+            if (this._internalAbstractMeshDataInfo._bakedVertexAnimationManager === value) {
+                return;
+            }
+            this._internalAbstractMeshDataInfo._bakedVertexAnimationManager = value;
+            this._markSubMeshesAsAttributesDirty();
+        },
+        enumerable: false,
+        configurable: true
+    });
     /** @hidden */
     AbstractMesh.prototype._syncGeometryWithMorphTargetManager = function () { };
     /** @hidden */
@@ -36808,11 +37475,32 @@ var AbstractMesh = /** @class */ (function (_super) {
             if (!this.subMeshes) {
                 return;
             }
+            this.resetDrawCache();
             this._unBindEffect();
         },
         enumerable: false,
         configurable: true
     });
+    /**
+     * Gets the material used to render the mesh in a specific render pass
+     * @param renderPassId render pass id
+     * @returns material used for the render pass. If no specific material is used for this render pass, undefined is returned (meaning mesh.material is used for this pass)
+     */
+    AbstractMesh.prototype.getMaterialForRenderPass = function (renderPassId) {
+        var _a;
+        return (_a = this._internalAbstractMeshDataInfo._materialForRenderPass) === null || _a === void 0 ? void 0 : _a[renderPassId];
+    };
+    /**
+     * Sets the material to be used to render the mesh in a specific render pass
+     * @param renderPassId render pass id
+     * @param material material to use for this render pass. If undefined is passed, no specific material will be used for this render pass but the regular material will be used instead (mesh.material)
+     */
+    AbstractMesh.prototype.setMaterialForRenderPass = function (renderPassId, material) {
+        if (!this._internalAbstractMeshDataInfo._materialForRenderPass) {
+            this._internalAbstractMeshDataInfo._materialForRenderPass = [];
+        }
+        this._internalAbstractMeshDataInfo._materialForRenderPass[renderPassId] = material;
+    };
     Object.defineProperty(AbstractMesh.prototype, "receiveShadows", {
         /**
          * Gets or sets a boolean indicating that this mesh can receive realtime shadows
@@ -37175,8 +37863,12 @@ var AbstractMesh = /** @class */ (function (_super) {
         }
         for (var _i = 0, _a = this.subMeshes; _i < _a.length; _i++) {
             var subMesh = _a[_i];
-            if (subMesh._materialDefines) {
-                func(subMesh._materialDefines);
+            for (var i = 0; i < subMesh._drawWrappers.length; ++i) {
+                var drawWrapper = subMesh._drawWrappers[i];
+                if (!drawWrapper || !drawWrapper.defines || !drawWrapper.defines.markAllAsDirty) {
+                    continue;
+                }
+                func(drawWrapper.defines);
             }
         }
     };
@@ -37192,6 +37884,28 @@ var AbstractMesh = /** @class */ (function (_super) {
     /** @hidden */
     AbstractMesh.prototype._markSubMeshesAsMiscDirty = function () {
         this._markSubMeshesAsDirty(function (defines) { return defines.markAsMiscDirty(); });
+    };
+    /**
+    * Flag the AbstractMesh as dirty (Forcing it to update everything)
+    * @param property if set to "rotation" the objects rotationQuaternion will be set to null
+    * @returns this AbstractMesh
+    */
+    AbstractMesh.prototype.markAsDirty = function (property) {
+        this._currentRenderId = Number.MAX_VALUE;
+        this._isDirty = true;
+        return this;
+    };
+    /**
+    * Resets the draw wrappers cache for all submeshes of this abstract mesh
+    */
+    AbstractMesh.prototype.resetDrawCache = function () {
+        if (!this.subMeshes) {
+            return;
+        }
+        for (var _i = 0, _a = this.subMeshes; _i < _a.length; _i++) {
+            var subMesh = _a[_i];
+            subMesh.resetDrawCache();
+        }
     };
     Object.defineProperty(AbstractMesh.prototype, "scaling", {
         /**
@@ -37570,6 +38284,28 @@ var AbstractMesh = /** @class */ (function (_super) {
                 }
             }
         }
+        if (data && applyMorph && this.morphTargetManager) {
+            var faceIndexCount = 0;
+            var positionIndex = 0;
+            for (var vertexCount = 0; vertexCount < data.length; vertexCount++) {
+                for (var targetCount = 0; targetCount < this.morphTargetManager.numTargets; targetCount++) {
+                    var targetMorph = this.morphTargetManager.getTarget(targetCount);
+                    var influence = targetMorph.influence;
+                    if (influence > 0.0) {
+                        var morphTargetPositions = targetMorph.getPositions();
+                        if (morphTargetPositions) {
+                            data[vertexCount] += (morphTargetPositions[vertexCount] - data[vertexCount]) * influence;
+                        }
+                    }
+                }
+                faceIndexCount++;
+                if (this._positions && faceIndexCount === 3) { // We want to merge into positions every 3 indices starting (but not 0)
+                    faceIndexCount = 0;
+                    var index_1 = positionIndex * 3;
+                    this._positions[positionIndex++].copyFromFloats(data[index_1], data[index_1 + 1], data[index_1 + 2]);
+                }
+            }
+        }
         if (data && applySkeleton && this.skeleton) {
             var matricesIndicesData = this.getVerticesData(VertexBuffer.MatricesIndicesKind);
             var matricesWeightsData = this.getVerticesData(VertexBuffer.MatricesWeightsKind);
@@ -37608,28 +38344,6 @@ var AbstractMesh = /** @class */ (function (_super) {
                     if (this._positions) {
                         this._positions[index / 3].copyFrom(tempVector);
                     }
-                }
-            }
-        }
-        if (data && applyMorph && this.morphTargetManager) {
-            var faceIndexCount = 0;
-            var positionIndex = 0;
-            for (var vertexCount = 0; vertexCount < data.length; vertexCount++) {
-                for (var targetCount = 0; targetCount < this.morphTargetManager.numTargets; targetCount++) {
-                    var targetMorph = this.morphTargetManager.getTarget(targetCount);
-                    var influence = targetMorph.influence;
-                    if (influence > 0.0) {
-                        var morphTargetPositions = targetMorph.getPositions();
-                        if (morphTargetPositions) {
-                            data[vertexCount] += (morphTargetPositions[vertexCount] - data[vertexCount]) * influence;
-                        }
-                    }
-                }
-                faceIndexCount++;
-                if (this._positions && faceIndexCount === 3) { // We want to merge into positions every 3 indices starting (but not 0)
-                    faceIndexCount = 0;
-                    var index_1 = positionIndex * 3;
-                    this._positions[positionIndex++].copyFromFloats(data[index_1], data[index_1 + 1], data[index_1 + 2]);
                 }
             }
         }
@@ -38068,19 +38782,23 @@ var AbstractMesh = /** @class */ (function (_super) {
     /**
      * Adds the passed mesh as a child to the current mesh
      * @param mesh defines the child mesh
+     * @param preserveScalingSign if true, keep scaling sign of child. Otherwise, scaling sign might change.
      * @returns the current mesh
      */
-    AbstractMesh.prototype.addChild = function (mesh) {
-        mesh.setParent(this);
+    AbstractMesh.prototype.addChild = function (mesh, preserveScalingSign) {
+        if (preserveScalingSign === void 0) { preserveScalingSign = false; }
+        mesh.setParent(this, preserveScalingSign);
         return this;
     };
     /**
      * Removes the passed mesh from the current mesh children list
      * @param mesh defines the child mesh
+     * @param preserveScalingSign if true, keep scaling sign of child. Otherwise, scaling sign might change.
      * @returns the current mesh
      */
-    AbstractMesh.prototype.removeChild = function (mesh) {
-        mesh.setParent(null);
+    AbstractMesh.prototype.removeChild = function (mesh, preserveScalingSign) {
+        if (preserveScalingSign === void 0) { preserveScalingSign = false; }
+        mesh.setParent(null, preserveScalingSign);
         return this;
     };
     // Facet data
@@ -38490,7 +39208,7 @@ var AbstractMesh = /** @class */ (function (_super) {
      * @returns the currentAbstractMesh
      */
     AbstractMesh.prototype.disableEdgesRendering = function () {
-        throw _DevTools.WarnImport("EdgesRenderer");
+        throw _WarnImport("EdgesRenderer");
     };
     /**
      * Enables the edge rendering mode on the mesh.
@@ -38502,7 +39220,7 @@ var AbstractMesh = /** @class */ (function (_super) {
      * @see https://www.babylonjs-playground.com/#19O9TU#0
      */
     AbstractMesh.prototype.enableEdgesRendering = function (epsilon, checkVerticesInsteadOfIndices, options) {
-        throw _DevTools.WarnImport("EdgesRenderer");
+        throw _WarnImport("EdgesRenderer");
     };
     /**
      * This function returns all of the particle systems in the scene that use the mesh as an emitter.
@@ -38558,7 +39276,7 @@ var AbstractMesh = /** @class */ (function (_super) {
     AbstractMesh.CULLINGSTRATEGY_OPTIMISTIC_INCLUSION_THEN_BSPHERE_ONLY = 3;
     return AbstractMesh;
 }(TransformNode));
-_TypeStore.RegisteredTypes["BABYLON.AbstractMesh"] = AbstractMesh;
+RegisterClass("BABYLON.AbstractMesh", AbstractMesh);
 
 /**
  * Represents a plane by the equation ax + by + cz + d = 0
@@ -38906,6 +39624,1383 @@ var SmartArrayNoDuplicate = /** @class */ (function (_super) {
     };
     return SmartArrayNoDuplicate;
 }(SmartArray));
+
+/**
+ * Class used to represent a viewport on screen
+ */
+var Viewport = /** @class */ (function () {
+    /**
+     * Creates a Viewport object located at (x, y) and sized (width, height)
+     * @param x defines viewport left coordinate
+     * @param y defines viewport top coordinate
+     * @param width defines the viewport width
+     * @param height defines the viewport height
+     */
+    function Viewport(
+    /** viewport left coordinate */
+    x, 
+    /** viewport top coordinate */
+    y, 
+    /**viewport width */
+    width, 
+    /** viewport height */
+    height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+    }
+    /**
+     * Creates a new viewport using absolute sizing (from 0-> width, 0-> height instead of 0->1)
+     * @param renderWidth defines the rendering width
+     * @param renderHeight defines the rendering height
+     * @returns a new Viewport
+     */
+    Viewport.prototype.toGlobal = function (renderWidth, renderHeight) {
+        return new Viewport(this.x * renderWidth, this.y * renderHeight, this.width * renderWidth, this.height * renderHeight);
+    };
+    /**
+     * Stores absolute viewport value into a target viewport (from 0-> width, 0-> height instead of 0->1)
+     * @param renderWidth defines the rendering width
+     * @param renderHeight defines the rendering height
+     * @param ref defines the target viewport
+     * @returns the current viewport
+     */
+    Viewport.prototype.toGlobalToRef = function (renderWidth, renderHeight, ref) {
+        ref.x = this.x * renderWidth;
+        ref.y = this.y * renderHeight;
+        ref.width = this.width * renderWidth;
+        ref.height = this.height * renderHeight;
+        return this;
+    };
+    /**
+     * Returns a new Viewport copied from the current one
+     * @returns a new Viewport
+     */
+    Viewport.prototype.clone = function () {
+        return new Viewport(this.x, this.y, this.width, this.height);
+    };
+    return Viewport;
+}());
+
+/**
+ * Represents a camera frustum
+ */
+var Frustum = /** @class */ (function () {
+    function Frustum() {
+    }
+    /**
+     * Gets the planes representing the frustum
+     * @param transform matrix to be applied to the returned planes
+     * @returns a new array of 6 Frustum planes computed by the given transformation matrix.
+     */
+    Frustum.GetPlanes = function (transform) {
+        var frustumPlanes = [];
+        for (var index = 0; index < 6; index++) {
+            frustumPlanes.push(new Plane(0.0, 0.0, 0.0, 0.0));
+        }
+        Frustum.GetPlanesToRef(transform, frustumPlanes);
+        return frustumPlanes;
+    };
+    /**
+     * Gets the near frustum plane transformed by the transform matrix
+     * @param transform transformation matrix to be applied to the resulting frustum plane
+     * @param frustumPlane the resuling frustum plane
+     */
+    Frustum.GetNearPlaneToRef = function (transform, frustumPlane) {
+        var m = transform.m;
+        frustumPlane.normal.x = m[3] + m[2];
+        frustumPlane.normal.y = m[7] + m[6];
+        frustumPlane.normal.z = m[11] + m[10];
+        frustumPlane.d = m[15] + m[14];
+        frustumPlane.normalize();
+    };
+    /**
+     * Gets the far frustum plane transformed by the transform matrix
+     * @param transform transformation matrix to be applied to the resulting frustum plane
+     * @param frustumPlane the resuling frustum plane
+     */
+    Frustum.GetFarPlaneToRef = function (transform, frustumPlane) {
+        var m = transform.m;
+        frustumPlane.normal.x = m[3] - m[2];
+        frustumPlane.normal.y = m[7] - m[6];
+        frustumPlane.normal.z = m[11] - m[10];
+        frustumPlane.d = m[15] - m[14];
+        frustumPlane.normalize();
+    };
+    /**
+     * Gets the left frustum plane transformed by the transform matrix
+     * @param transform transformation matrix to be applied to the resulting frustum plane
+     * @param frustumPlane the resuling frustum plane
+     */
+    Frustum.GetLeftPlaneToRef = function (transform, frustumPlane) {
+        var m = transform.m;
+        frustumPlane.normal.x = m[3] + m[0];
+        frustumPlane.normal.y = m[7] + m[4];
+        frustumPlane.normal.z = m[11] + m[8];
+        frustumPlane.d = m[15] + m[12];
+        frustumPlane.normalize();
+    };
+    /**
+     * Gets the right frustum plane transformed by the transform matrix
+     * @param transform transformation matrix to be applied to the resulting frustum plane
+     * @param frustumPlane the resuling frustum plane
+     */
+    Frustum.GetRightPlaneToRef = function (transform, frustumPlane) {
+        var m = transform.m;
+        frustumPlane.normal.x = m[3] - m[0];
+        frustumPlane.normal.y = m[7] - m[4];
+        frustumPlane.normal.z = m[11] - m[8];
+        frustumPlane.d = m[15] - m[12];
+        frustumPlane.normalize();
+    };
+    /**
+     * Gets the top frustum plane transformed by the transform matrix
+     * @param transform transformation matrix to be applied to the resulting frustum plane
+     * @param frustumPlane the resuling frustum plane
+     */
+    Frustum.GetTopPlaneToRef = function (transform, frustumPlane) {
+        var m = transform.m;
+        frustumPlane.normal.x = m[3] - m[1];
+        frustumPlane.normal.y = m[7] - m[5];
+        frustumPlane.normal.z = m[11] - m[9];
+        frustumPlane.d = m[15] - m[13];
+        frustumPlane.normalize();
+    };
+    /**
+     * Gets the bottom frustum plane transformed by the transform matrix
+     * @param transform transformation matrix to be applied to the resulting frustum plane
+     * @param frustumPlane the resuling frustum plane
+     */
+    Frustum.GetBottomPlaneToRef = function (transform, frustumPlane) {
+        var m = transform.m;
+        frustumPlane.normal.x = m[3] + m[1];
+        frustumPlane.normal.y = m[7] + m[5];
+        frustumPlane.normal.z = m[11] + m[9];
+        frustumPlane.d = m[15] + m[13];
+        frustumPlane.normalize();
+    };
+    /**
+     * Sets the given array "frustumPlanes" with the 6 Frustum planes computed by the given transformation matrix.
+     * @param transform transformation matrix to be applied to the resulting frustum planes
+     * @param frustumPlanes the resuling frustum planes
+     */
+    Frustum.GetPlanesToRef = function (transform, frustumPlanes) {
+        // Near
+        Frustum.GetNearPlaneToRef(transform, frustumPlanes[0]);
+        // Far
+        Frustum.GetFarPlaneToRef(transform, frustumPlanes[1]);
+        // Left
+        Frustum.GetLeftPlaneToRef(transform, frustumPlanes[2]);
+        // Right
+        Frustum.GetRightPlaneToRef(transform, frustumPlanes[3]);
+        // Top
+        Frustum.GetTopPlaneToRef(transform, frustumPlanes[4]);
+        // Bottom
+        Frustum.GetBottomPlaneToRef(transform, frustumPlanes[5]);
+    };
+    return Frustum;
+}());
+
+/**
+ * This is the base class of all the camera used in the application.
+ * @see https://doc.babylonjs.com/features/cameras
+ */
+var Camera = /** @class */ (function (_super) {
+    __extends(Camera, _super);
+    /**
+     * Instantiates a new camera object.
+     * This should not be used directly but through the inherited cameras: ArcRotate, Free...
+     * @see https://doc.babylonjs.com/features/cameras
+     * @param name Defines the name of the camera in the scene
+     * @param position Defines the position of the camera
+     * @param scene Defines the scene the camera belongs too
+     * @param setActiveOnSceneIfNoneActive Defines if the camera should be set as active after creation if no other camera have been defined in the scene
+     */
+    function Camera(name, position, scene, setActiveOnSceneIfNoneActive) {
+        if (setActiveOnSceneIfNoneActive === void 0) { setActiveOnSceneIfNoneActive = true; }
+        var _this = _super.call(this, name, scene) || this;
+        /** @hidden */
+        _this._position = Vector3.Zero();
+        _this._upVector = Vector3.Up();
+        /**
+         * Define the current limit on the left side for an orthographic camera
+         * In scene unit
+         */
+        _this.orthoLeft = null;
+        /**
+         * Define the current limit on the right side for an orthographic camera
+         * In scene unit
+         */
+        _this.orthoRight = null;
+        /**
+         * Define the current limit on the bottom side for an orthographic camera
+         * In scene unit
+         */
+        _this.orthoBottom = null;
+        /**
+         * Define the current limit on the top side for an orthographic camera
+         * In scene unit
+         */
+        _this.orthoTop = null;
+        /**
+         * Field Of View is set in Radians. (default is 0.8)
+         */
+        _this.fov = 0.8;
+        /**
+         * Projection plane tilt around the X axis (horizontal), set in Radians. (default is 0)
+         * Can be used to make vertical lines in world space actually vertical on the screen.
+         * See https://forum.babylonjs.com/t/add-vertical-shift-to-3ds-max-exporter-babylon-cameras/17480
+         */
+        _this.projectionPlaneTilt = 0;
+        /**
+         * Define the minimum distance the camera can see from.
+         * This is important to note that the depth buffer are not infinite and the closer it starts
+         * the more your scene might encounter depth fighting issue.
+         */
+        _this.minZ = 1;
+        /**
+         * Define the maximum distance the camera can see to.
+         * This is important to note that the depth buffer are not infinite and the further it end
+         * the more your scene might encounter depth fighting issue.
+         */
+        _this.maxZ = 10000.0;
+        /**
+         * Define the default inertia of the camera.
+         * This helps giving a smooth feeling to the camera movement.
+         */
+        _this.inertia = 0.9;
+        /**
+         * Define the mode of the camera (Camera.PERSPECTIVE_CAMERA or Camera.ORTHOGRAPHIC_CAMERA)
+         */
+        _this.mode = Camera.PERSPECTIVE_CAMERA;
+        /**
+         * Define whether the camera is intermediate.
+         * This is useful to not present the output directly to the screen in case of rig without post process for instance
+         */
+        _this.isIntermediate = false;
+        /**
+         * Define the viewport of the camera.
+         * This correspond to the portion of the screen the camera will render to in normalized 0 to 1 unit.
+         */
+        _this.viewport = new Viewport(0, 0, 1.0, 1.0);
+        /**
+         * Restricts the camera to viewing objects with the same layerMask.
+         * A camera with a layerMask of 1 will render mesh.layerMask & camera.layerMask!== 0
+         */
+        _this.layerMask = 0x0FFFFFFF;
+        /**
+         * fovMode sets the camera frustum bounds to the viewport bounds. (default is FOVMODE_VERTICAL_FIXED)
+         */
+        _this.fovMode = Camera.FOVMODE_VERTICAL_FIXED;
+        /**
+         * Rig mode of the camera.
+         * This is useful to create the camera with two "eyes" instead of one to create VR or stereoscopic scenes.
+         * This is normally controlled byt the camera themselves as internal use.
+         */
+        _this.cameraRigMode = Camera.RIG_MODE_NONE;
+        /**
+         * Defines the list of custom render target which are rendered to and then used as the input to this camera's render. Eg. display another camera view on a TV in the main scene
+         * This is pretty helpful if you wish to make a camera render to a texture you could reuse somewhere
+         * else in the scene. (Eg. security camera)
+         *
+         * To change the final output target of the camera, camera.outputRenderTarget should be used instead (eg. webXR renders to a render target corresponding to an HMD)
+         */
+        _this.customRenderTargets = new Array();
+        /**
+         * When set, the camera will render to this render target instead of the default canvas
+         *
+         * If the desire is to use the output of a camera as a texture in the scene consider using camera.customRenderTargets instead
+         */
+        _this.outputRenderTarget = null;
+        /**
+         * Observable triggered when the camera view matrix has changed.
+         */
+        _this.onViewMatrixChangedObservable = new Observable();
+        /**
+         * Observable triggered when the camera Projection matrix has changed.
+         */
+        _this.onProjectionMatrixChangedObservable = new Observable();
+        /**
+         * Observable triggered when the inputs have been processed.
+         */
+        _this.onAfterCheckInputsObservable = new Observable();
+        /**
+         * Observable triggered when reset has been called and applied to the camera.
+         */
+        _this.onRestoreStateObservable = new Observable();
+        /**
+         * Is this camera a part of a rig system?
+         */
+        _this.isRigCamera = false;
+        /** @hidden */
+        _this._rigCameras = new Array();
+        _this._webvrViewMatrix = Matrix.Identity();
+        /** @hidden */
+        _this._skipRendering = false;
+        /** @hidden */
+        _this._projectionMatrix = new Matrix();
+        /** @hidden */
+        _this._postProcesses = new Array();
+        /** @hidden */
+        _this._activeMeshes = new SmartArray(256);
+        _this._globalPosition = Vector3.Zero();
+        /** @hidden */
+        _this._computedViewMatrix = Matrix.Identity();
+        _this._doNotComputeProjectionMatrix = false;
+        _this._transformMatrix = Matrix.Zero();
+        _this._refreshFrustumPlanes = true;
+        _this._absoluteRotation = Quaternion.Identity();
+        /** @hidden */
+        _this._isCamera = true;
+        /** @hidden */
+        _this._isLeftCamera = false;
+        /** @hidden */
+        _this._isRightCamera = false;
+        _this.getScene().addCamera(_this);
+        if (setActiveOnSceneIfNoneActive && !_this.getScene().activeCamera) {
+            _this.getScene().activeCamera = _this;
+        }
+        _this.position = position;
+        _this.renderPassId = _this.getScene().getEngine().createRenderPassId("Camera " + name);
+        return _this;
+    }
+    Object.defineProperty(Camera.prototype, "position", {
+        /**
+         * Define the current local position of the camera in the scene
+         */
+        get: function () {
+            return this._position;
+        },
+        set: function (newPosition) {
+            this._position = newPosition;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Camera.prototype, "upVector", {
+        get: function () {
+            return this._upVector;
+        },
+        /**
+         * The vector the camera should consider as up.
+         * (default is Vector3(0, 1, 0) aka Vector3.Up())
+         */
+        set: function (vec) {
+            this._upVector = vec;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Camera.prototype, "screenArea", {
+        /**
+         * The screen area in scene units squared
+         */
+        get: function () {
+            var _a, _b, _c, _d;
+            var x = 0;
+            var y = 0;
+            if (this.mode === Camera.PERSPECTIVE_CAMERA) {
+                if (this.fovMode === Camera.FOVMODE_VERTICAL_FIXED) {
+                    y = this.minZ * 2 * Math.tan(this.fov / 2);
+                    x = this.getEngine().getAspectRatio(this) * y;
+                }
+                else {
+                    x = this.minZ * 2 * Math.tan(this.fov / 2);
+                    y = x / this.getEngine().getAspectRatio(this);
+                }
+            }
+            else {
+                var halfWidth = this.getEngine().getRenderWidth() / 2.0;
+                var halfHeight = this.getEngine().getRenderHeight() / 2.0;
+                x = ((_a = this.orthoRight) !== null && _a !== void 0 ? _a : halfWidth) - ((_b = this.orthoLeft) !== null && _b !== void 0 ? _b : -halfWidth);
+                y = ((_c = this.orthoTop) !== null && _c !== void 0 ? _c : halfHeight) - ((_d = this.orthoBottom) !== null && _d !== void 0 ? _d : -halfHeight);
+            }
+            return x * y;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Store current camera state (fov, position, etc..)
+     * @returns the camera
+     */
+    Camera.prototype.storeState = function () {
+        this._stateStored = true;
+        this._storedFov = this.fov;
+        return this;
+    };
+    /**
+     * Restores the camera state values if it has been stored. You must call storeState() first
+     */
+    Camera.prototype._restoreStateValues = function () {
+        if (!this._stateStored) {
+            return false;
+        }
+        this.fov = this._storedFov;
+        return true;
+    };
+    /**
+     * Restored camera state. You must call storeState() first.
+     * @returns true if restored and false otherwise
+     */
+    Camera.prototype.restoreState = function () {
+        if (this._restoreStateValues()) {
+            this.onRestoreStateObservable.notifyObservers(this);
+            return true;
+        }
+        return false;
+    };
+    /**
+     * Gets the class name of the camera.
+     * @returns the class name
+     */
+    Camera.prototype.getClassName = function () {
+        return "Camera";
+    };
+    /**
+     * Gets a string representation of the camera useful for debug purpose.
+     * @param fullDetails Defines that a more verboe level of logging is required
+     * @returns the string representation
+     */
+    Camera.prototype.toString = function (fullDetails) {
+        var ret = "Name: " + this.name;
+        ret += ", type: " + this.getClassName();
+        if (this.animations) {
+            for (var i = 0; i < this.animations.length; i++) {
+                ret += ", animation[0]: " + this.animations[i].toString(fullDetails);
+            }
+        }
+        return ret;
+    };
+    /**
+     * Automatically tilts the projection plane, using `projectionPlaneTilt`, to correct the perspective effect on vertical lines.
+     */
+    Camera.prototype.applyVerticalCorrection = function () {
+        var rot = this.absoluteRotation.toEulerAngles();
+        this.projectionPlaneTilt = this._scene.useRightHandedSystem ? -rot.x : rot.x;
+    };
+    Object.defineProperty(Camera.prototype, "globalPosition", {
+        /**
+         * Gets the current world space position of the camera.
+         */
+        get: function () {
+            return this._globalPosition;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Gets the list of active meshes this frame (meshes no culled or excluded by lod s in the frame)
+     * @returns the active meshe list
+     */
+    Camera.prototype.getActiveMeshes = function () {
+        return this._activeMeshes;
+    };
+    /**
+     * Check whether a mesh is part of the current active mesh list of the camera
+     * @param mesh Defines the mesh to check
+     * @returns true if active, false otherwise
+     */
+    Camera.prototype.isActiveMesh = function (mesh) {
+        return (this._activeMeshes.indexOf(mesh) !== -1);
+    };
+    /**
+     * Is this camera ready to be used/rendered
+     * @param completeCheck defines if a complete check (including post processes) has to be done (false by default)
+     * @return true if the camera is ready
+     */
+    Camera.prototype.isReady = function (completeCheck) {
+        if (completeCheck === void 0) { completeCheck = false; }
+        if (completeCheck) {
+            for (var _i = 0, _a = this._postProcesses; _i < _a.length; _i++) {
+                var pp = _a[_i];
+                if (pp && !pp.isReady()) {
+                    return false;
+                }
+            }
+        }
+        return _super.prototype.isReady.call(this, completeCheck);
+    };
+    /** @hidden */
+    Camera.prototype._initCache = function () {
+        _super.prototype._initCache.call(this);
+        this._cache.position = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
+        this._cache.upVector = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
+        this._cache.mode = undefined;
+        this._cache.minZ = undefined;
+        this._cache.maxZ = undefined;
+        this._cache.fov = undefined;
+        this._cache.fovMode = undefined;
+        this._cache.aspectRatio = undefined;
+        this._cache.orthoLeft = undefined;
+        this._cache.orthoRight = undefined;
+        this._cache.orthoBottom = undefined;
+        this._cache.orthoTop = undefined;
+        this._cache.renderWidth = undefined;
+        this._cache.renderHeight = undefined;
+    };
+    /** @hidden */
+    Camera.prototype._updateCache = function (ignoreParentClass) {
+        if (!ignoreParentClass) {
+            _super.prototype._updateCache.call(this);
+        }
+        this._cache.position.copyFrom(this.position);
+        this._cache.upVector.copyFrom(this.upVector);
+    };
+    /** @hidden */
+    Camera.prototype._isSynchronized = function () {
+        return this._isSynchronizedViewMatrix() && this._isSynchronizedProjectionMatrix();
+    };
+    /** @hidden */
+    Camera.prototype._isSynchronizedViewMatrix = function () {
+        if (!_super.prototype._isSynchronized.call(this)) {
+            return false;
+        }
+        return this._cache.position.equals(this.position)
+            && this._cache.upVector.equals(this.upVector)
+            && this.isSynchronizedWithParent();
+    };
+    /** @hidden */
+    Camera.prototype._isSynchronizedProjectionMatrix = function () {
+        var check = this._cache.mode === this.mode
+            && this._cache.minZ === this.minZ
+            && this._cache.maxZ === this.maxZ;
+        if (!check) {
+            return false;
+        }
+        var engine = this.getEngine();
+        if (this.mode === Camera.PERSPECTIVE_CAMERA) {
+            check = this._cache.fov === this.fov
+                && this._cache.fovMode === this.fovMode
+                && this._cache.aspectRatio === engine.getAspectRatio(this)
+                && this._cache.projectionPlaneTilt === this.projectionPlaneTilt;
+        }
+        else {
+            check = this._cache.orthoLeft === this.orthoLeft
+                && this._cache.orthoRight === this.orthoRight
+                && this._cache.orthoBottom === this.orthoBottom
+                && this._cache.orthoTop === this.orthoTop
+                && this._cache.renderWidth === engine.getRenderWidth()
+                && this._cache.renderHeight === engine.getRenderHeight();
+        }
+        return check;
+    };
+    /**
+     * Attach the input controls to a specific dom element to get the input from.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
+     */
+    Camera.prototype.attachControl = function (ignored, noPreventDefault) {
+    };
+    /**
+     * Detach the current controls from the specified dom element.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     */
+    Camera.prototype.detachControl = function (ignored) {
+    };
+    /**
+     * Update the camera state according to the different inputs gathered during the frame.
+     */
+    Camera.prototype.update = function () {
+        this._checkInputs();
+        if (this.cameraRigMode !== Camera.RIG_MODE_NONE) {
+            this._updateRigCameras();
+        }
+    };
+    /** @hidden */
+    Camera.prototype._checkInputs = function () {
+        this.onAfterCheckInputsObservable.notifyObservers(this);
+    };
+    Object.defineProperty(Camera.prototype, "rigCameras", {
+        /** @hidden */
+        get: function () {
+            return this._rigCameras;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Camera.prototype, "rigPostProcess", {
+        /**
+         * Gets the post process used by the rig cameras
+         */
+        get: function () {
+            return this._rigPostProcess;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Internal, gets the first post process.
+     * @returns the first post process to be run on this camera.
+     */
+    Camera.prototype._getFirstPostProcess = function () {
+        for (var ppIndex = 0; ppIndex < this._postProcesses.length; ppIndex++) {
+            if (this._postProcesses[ppIndex] !== null) {
+                return this._postProcesses[ppIndex];
+            }
+        }
+        return null;
+    };
+    Camera.prototype._cascadePostProcessesToRigCams = function () {
+        // invalidate framebuffer
+        var firstPostProcess = this._getFirstPostProcess();
+        if (firstPostProcess) {
+            firstPostProcess.markTextureDirty();
+        }
+        // glue the rigPostProcess to the end of the user postprocesses & assign to each sub-camera
+        for (var i = 0, len = this._rigCameras.length; i < len; i++) {
+            var cam = this._rigCameras[i];
+            var rigPostProcess = cam._rigPostProcess;
+            // for VR rig, there does not have to be a post process
+            if (rigPostProcess) {
+                var isPass = rigPostProcess.getEffectName() === "pass";
+                if (isPass) {
+                    // any rig which has a PassPostProcess for rig[0], cannot be isIntermediate when there are also user postProcesses
+                    cam.isIntermediate = this._postProcesses.length === 0;
+                }
+                cam._postProcesses = this._postProcesses.slice(0).concat(rigPostProcess);
+                rigPostProcess.markTextureDirty();
+            }
+            else {
+                cam._postProcesses = this._postProcesses.slice(0);
+            }
+        }
+    };
+    /**
+     * Attach a post process to the camera.
+     * @see https://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
+     * @param postProcess The post process to attach to the camera
+     * @param insertAt The position of the post process in case several of them are in use in the scene
+     * @returns the position the post process has been inserted at
+     */
+    Camera.prototype.attachPostProcess = function (postProcess, insertAt) {
+        if (insertAt === void 0) { insertAt = null; }
+        if (!postProcess.isReusable() && this._postProcesses.indexOf(postProcess) > -1) {
+            Logger.Error("You're trying to reuse a post process not defined as reusable.");
+            return 0;
+        }
+        if (insertAt == null || insertAt < 0) {
+            this._postProcesses.push(postProcess);
+        }
+        else if (this._postProcesses[insertAt] === null) {
+            this._postProcesses[insertAt] = postProcess;
+        }
+        else {
+            this._postProcesses.splice(insertAt, 0, postProcess);
+        }
+        this._cascadePostProcessesToRigCams(); // also ensures framebuffer invalidated
+        // Update prePass
+        if (this._scene.prePassRenderer) {
+            this._scene.prePassRenderer.markAsDirty();
+        }
+        return this._postProcesses.indexOf(postProcess);
+    };
+    /**
+     * Detach a post process to the camera.
+     * @see https://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
+     * @param postProcess The post process to detach from the camera
+     */
+    Camera.prototype.detachPostProcess = function (postProcess) {
+        var idx = this._postProcesses.indexOf(postProcess);
+        if (idx !== -1) {
+            this._postProcesses[idx] = null;
+        }
+        // Update prePass
+        if (this._scene.prePassRenderer) {
+            this._scene.prePassRenderer.markAsDirty();
+        }
+        this._cascadePostProcessesToRigCams(); // also ensures framebuffer invalidated
+    };
+    /**
+     * Gets the current world matrix of the camera
+     */
+    Camera.prototype.getWorldMatrix = function () {
+        if (this._isSynchronizedViewMatrix()) {
+            return this._worldMatrix;
+        }
+        // Getting the the view matrix will also compute the world matrix.
+        this.getViewMatrix();
+        return this._worldMatrix;
+    };
+    /** @hidden */
+    Camera.prototype._getViewMatrix = function () {
+        return Matrix.Identity();
+    };
+    /**
+     * Gets the current view matrix of the camera.
+     * @param force forces the camera to recompute the matrix without looking at the cached state
+     * @returns the view matrix
+     */
+    Camera.prototype.getViewMatrix = function (force) {
+        if (!force && this._isSynchronizedViewMatrix()) {
+            return this._computedViewMatrix;
+        }
+        this.updateCache();
+        this._computedViewMatrix = this._getViewMatrix();
+        this._currentRenderId = this.getScene().getRenderId();
+        this._childUpdateId++;
+        this._refreshFrustumPlanes = true;
+        if (this._cameraRigParams && this._cameraRigParams.vrPreViewMatrix) {
+            this._computedViewMatrix.multiplyToRef(this._cameraRigParams.vrPreViewMatrix, this._computedViewMatrix);
+        }
+        // Notify parent camera if rig camera is changed
+        if (this.parent && this.parent.onViewMatrixChangedObservable) {
+            this.parent.onViewMatrixChangedObservable.notifyObservers(this.parent);
+        }
+        this.onViewMatrixChangedObservable.notifyObservers(this);
+        this._computedViewMatrix.invertToRef(this._worldMatrix);
+        return this._computedViewMatrix;
+    };
+    /**
+     * Freeze the projection matrix.
+     * It will prevent the cache check of the camera projection compute and can speed up perf
+     * if no parameter of the camera are meant to change
+     * @param projection Defines manually a projection if necessary
+     */
+    Camera.prototype.freezeProjectionMatrix = function (projection) {
+        this._doNotComputeProjectionMatrix = true;
+        if (projection !== undefined) {
+            this._projectionMatrix = projection;
+        }
+    };
+    /**
+     * Unfreeze the projection matrix if it has previously been freezed by freezeProjectionMatrix.
+     */
+    Camera.prototype.unfreezeProjectionMatrix = function () {
+        this._doNotComputeProjectionMatrix = false;
+    };
+    /**
+     * Gets the current projection matrix of the camera.
+     * @param force forces the camera to recompute the matrix without looking at the cached state
+     * @returns the projection matrix
+     */
+    Camera.prototype.getProjectionMatrix = function (force) {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        if (this._doNotComputeProjectionMatrix || (!force && this._isSynchronizedProjectionMatrix())) {
+            return this._projectionMatrix;
+        }
+        // Cache
+        this._cache.mode = this.mode;
+        this._cache.minZ = this.minZ;
+        this._cache.maxZ = this.maxZ;
+        // Matrix
+        this._refreshFrustumPlanes = true;
+        var engine = this.getEngine();
+        var scene = this.getScene();
+        if (this.mode === Camera.PERSPECTIVE_CAMERA) {
+            this._cache.fov = this.fov;
+            this._cache.fovMode = this.fovMode;
+            this._cache.aspectRatio = engine.getAspectRatio(this);
+            this._cache.projectionPlaneTilt = this.projectionPlaneTilt;
+            if (this.minZ <= 0) {
+                this.minZ = 0.1;
+            }
+            var reverseDepth = engine.useReverseDepthBuffer;
+            var getProjectionMatrix = void 0;
+            if (scene.useRightHandedSystem) {
+                getProjectionMatrix = Matrix.PerspectiveFovRHToRef;
+            }
+            else {
+                getProjectionMatrix = Matrix.PerspectiveFovLHToRef;
+            }
+            getProjectionMatrix(this.fov, engine.getAspectRatio(this), reverseDepth ? this.maxZ : this.minZ, reverseDepth ? this.minZ : this.maxZ, this._projectionMatrix, this.fovMode === Camera.FOVMODE_VERTICAL_FIXED, engine.isNDCHalfZRange, this.projectionPlaneTilt, engine.useReverseDepthBuffer);
+        }
+        else {
+            var halfWidth = engine.getRenderWidth() / 2.0;
+            var halfHeight = engine.getRenderHeight() / 2.0;
+            if (scene.useRightHandedSystem) {
+                Matrix.OrthoOffCenterRHToRef((_a = this.orthoLeft) !== null && _a !== void 0 ? _a : -halfWidth, (_b = this.orthoRight) !== null && _b !== void 0 ? _b : halfWidth, (_c = this.orthoBottom) !== null && _c !== void 0 ? _c : -halfHeight, (_d = this.orthoTop) !== null && _d !== void 0 ? _d : halfHeight, this.minZ, this.maxZ, this._projectionMatrix, engine.isNDCHalfZRange);
+            }
+            else {
+                Matrix.OrthoOffCenterLHToRef((_e = this.orthoLeft) !== null && _e !== void 0 ? _e : -halfWidth, (_f = this.orthoRight) !== null && _f !== void 0 ? _f : halfWidth, (_g = this.orthoBottom) !== null && _g !== void 0 ? _g : -halfHeight, (_h = this.orthoTop) !== null && _h !== void 0 ? _h : halfHeight, this.minZ, this.maxZ, this._projectionMatrix, engine.isNDCHalfZRange);
+            }
+            this._cache.orthoLeft = this.orthoLeft;
+            this._cache.orthoRight = this.orthoRight;
+            this._cache.orthoBottom = this.orthoBottom;
+            this._cache.orthoTop = this.orthoTop;
+            this._cache.renderWidth = engine.getRenderWidth();
+            this._cache.renderHeight = engine.getRenderHeight();
+        }
+        this.onProjectionMatrixChangedObservable.notifyObservers(this);
+        return this._projectionMatrix;
+    };
+    /**
+     * Gets the transformation matrix (ie. the multiplication of view by projection matrices)
+     * @returns a Matrix
+     */
+    Camera.prototype.getTransformationMatrix = function () {
+        this._computedViewMatrix.multiplyToRef(this._projectionMatrix, this._transformMatrix);
+        return this._transformMatrix;
+    };
+    Camera.prototype._updateFrustumPlanes = function () {
+        if (!this._refreshFrustumPlanes) {
+            return;
+        }
+        this.getTransformationMatrix();
+        if (!this._frustumPlanes) {
+            this._frustumPlanes = Frustum.GetPlanes(this._transformMatrix);
+        }
+        else {
+            Frustum.GetPlanesToRef(this._transformMatrix, this._frustumPlanes);
+        }
+        this._refreshFrustumPlanes = false;
+    };
+    /**
+     * Checks if a cullable object (mesh...) is in the camera frustum
+     * This checks the bounding box center. See isCompletelyInFrustum for a full bounding check
+     * @param target The object to check
+     * @param checkRigCameras If the rig cameras should be checked (eg. with webVR camera both eyes should be checked) (Default: false)
+     * @returns true if the object is in frustum otherwise false
+     */
+    Camera.prototype.isInFrustum = function (target, checkRigCameras) {
+        if (checkRigCameras === void 0) { checkRigCameras = false; }
+        this._updateFrustumPlanes();
+        if (checkRigCameras && this.rigCameras.length > 0) {
+            var result = false;
+            this.rigCameras.forEach(function (cam) {
+                cam._updateFrustumPlanes();
+                result = result || target.isInFrustum(cam._frustumPlanes);
+            });
+            return result;
+        }
+        else {
+            return target.isInFrustum(this._frustumPlanes);
+        }
+    };
+    /**
+     * Checks if a cullable object (mesh...) is in the camera frustum
+     * Unlike isInFrustum this checks the full bounding box
+     * @param target The object to check
+     * @returns true if the object is in frustum otherwise false
+     */
+    Camera.prototype.isCompletelyInFrustum = function (target) {
+        this._updateFrustumPlanes();
+        return target.isCompletelyInFrustum(this._frustumPlanes);
+    };
+    /**
+     * Gets a ray in the forward direction from the camera.
+     * @param length Defines the length of the ray to create
+     * @param transform Defines the transform to apply to the ray, by default the world matrix is used to create a workd space ray
+     * @param origin Defines the start point of the ray which defaults to the camera position
+     * @returns the forward ray
+     */
+    Camera.prototype.getForwardRay = function (length, transform, origin) {
+        throw _WarnImport("Ray");
+    };
+    /**
+     * Gets a ray in the forward direction from the camera.
+     * @param refRay the ray to (re)use when setting the values
+     * @param length Defines the length of the ray to create
+     * @param transform Defines the transform to apply to the ray, by default the world matrx is used to create a workd space ray
+     * @param origin Defines the start point of the ray which defaults to the camera position
+     * @returns the forward ray
+     */
+    Camera.prototype.getForwardRayToRef = function (refRay, length, transform, origin) {
+        throw _WarnImport("Ray");
+    };
+    /**
+     * Releases resources associated with this node.
+     * @param doNotRecurse Set to true to not recurse into each children (recurse into each children by default)
+     * @param disposeMaterialAndTextures Set to true to also dispose referenced materials and textures (false by default)
+     */
+    Camera.prototype.dispose = function (doNotRecurse, disposeMaterialAndTextures) {
+        if (disposeMaterialAndTextures === void 0) { disposeMaterialAndTextures = false; }
+        // Observables
+        this.onViewMatrixChangedObservable.clear();
+        this.onProjectionMatrixChangedObservable.clear();
+        this.onAfterCheckInputsObservable.clear();
+        this.onRestoreStateObservable.clear();
+        // Inputs
+        if (this.inputs) {
+            this.inputs.clear();
+        }
+        // Animations
+        this.getScene().stopAnimation(this);
+        // Remove from scene
+        this.getScene().removeCamera(this);
+        while (this._rigCameras.length > 0) {
+            var camera = this._rigCameras.pop();
+            if (camera) {
+                camera.dispose();
+            }
+        }
+        if (this._parentContainer) {
+            var index = this._parentContainer.cameras.indexOf(this);
+            if (index > -1) {
+                this._parentContainer.cameras.splice(index, 1);
+            }
+            this._parentContainer = null;
+        }
+        // Postprocesses
+        if (this._rigPostProcess) {
+            this._rigPostProcess.dispose(this);
+            this._rigPostProcess = null;
+            this._postProcesses = [];
+        }
+        else if (this.cameraRigMode !== Camera.RIG_MODE_NONE) {
+            this._rigPostProcess = null;
+            this._postProcesses = [];
+        }
+        else {
+            var i = this._postProcesses.length;
+            while (--i >= 0) {
+                var postProcess = this._postProcesses[i];
+                if (postProcess) {
+                    postProcess.dispose(this);
+                }
+            }
+        }
+        // Render targets
+        var i = this.customRenderTargets.length;
+        while (--i >= 0) {
+            this.customRenderTargets[i].dispose();
+        }
+        this.customRenderTargets = [];
+        // Active Meshes
+        this._activeMeshes.dispose();
+        this.getScene().getEngine().releaseRenderPassId(this.renderPassId);
+        _super.prototype.dispose.call(this, doNotRecurse, disposeMaterialAndTextures);
+    };
+    Object.defineProperty(Camera.prototype, "isLeftCamera", {
+        /**
+         * Gets the left camera of a rig setup in case of Rigged Camera
+         */
+        get: function () {
+            return this._isLeftCamera;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Camera.prototype, "isRightCamera", {
+        /**
+         * Gets the right camera of a rig setup in case of Rigged Camera
+         */
+        get: function () {
+            return this._isRightCamera;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Camera.prototype, "leftCamera", {
+        /**
+         * Gets the left camera of a rig setup in case of Rigged Camera
+         */
+        get: function () {
+            if (this._rigCameras.length < 1) {
+                return null;
+            }
+            return this._rigCameras[0];
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(Camera.prototype, "rightCamera", {
+        /**
+         * Gets the right camera of a rig setup in case of Rigged Camera
+         */
+        get: function () {
+            if (this._rigCameras.length < 2) {
+                return null;
+            }
+            return this._rigCameras[1];
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Gets the left camera target of a rig setup in case of Rigged Camera
+     * @returns the target position
+     */
+    Camera.prototype.getLeftTarget = function () {
+        if (this._rigCameras.length < 1) {
+            return null;
+        }
+        return this._rigCameras[0].getTarget();
+    };
+    /**
+     * Gets the right camera target of a rig setup in case of Rigged Camera
+     * @returns the target position
+     */
+    Camera.prototype.getRightTarget = function () {
+        if (this._rigCameras.length < 2) {
+            return null;
+        }
+        return this._rigCameras[1].getTarget();
+    };
+    /**
+     * @hidden
+     */
+    Camera.prototype.setCameraRigMode = function (mode, rigParams) {
+        if (this.cameraRigMode === mode) {
+            return;
+        }
+        while (this._rigCameras.length > 0) {
+            var camera = this._rigCameras.pop();
+            if (camera) {
+                camera.dispose();
+            }
+        }
+        this.cameraRigMode = mode;
+        this._cameraRigParams = {};
+        //we have to implement stereo camera calcultating left and right viewpoints from interaxialDistance and target,
+        //not from a given angle as it is now, but until that complete code rewriting provisional stereoHalfAngle value is introduced
+        this._cameraRigParams.interaxialDistance = rigParams.interaxialDistance || 0.0637;
+        this._cameraRigParams.stereoHalfAngle = Tools.ToRadians(this._cameraRigParams.interaxialDistance / 0.0637);
+        // create the rig cameras, unless none
+        if (this.cameraRigMode !== Camera.RIG_MODE_NONE) {
+            var leftCamera = this.createRigCamera(this.name + "_L", 0);
+            if (leftCamera) {
+                leftCamera._isLeftCamera = true;
+            }
+            var rightCamera = this.createRigCamera(this.name + "_R", 1);
+            if (rightCamera) {
+                rightCamera._isRightCamera = true;
+            }
+            if (leftCamera && rightCamera) {
+                this._rigCameras.push(leftCamera);
+                this._rigCameras.push(rightCamera);
+            }
+        }
+        this._setRigMode(rigParams);
+        this._cascadePostProcessesToRigCams();
+        this.update();
+    };
+    Camera.prototype._setRigMode = function (rigParams) {
+        // no-op
+    };
+    /** @hidden */
+    Camera.prototype._getVRProjectionMatrix = function () {
+        Matrix.PerspectiveFovLHToRef(this._cameraRigParams.vrMetrics.aspectRatioFov, this._cameraRigParams.vrMetrics.aspectRatio, this.minZ, this.maxZ, this._cameraRigParams.vrWorkMatrix, true, this.getEngine().isNDCHalfZRange);
+        this._cameraRigParams.vrWorkMatrix.multiplyToRef(this._cameraRigParams.vrHMatrix, this._projectionMatrix);
+        return this._projectionMatrix;
+    };
+    Camera.prototype._updateCameraRotationMatrix = function () {
+        //Here for WebVR
+    };
+    Camera.prototype._updateWebVRCameraRotationMatrix = function () {
+        //Here for WebVR
+    };
+    /**
+     * This function MUST be overwritten by the different WebVR cameras available.
+     * The context in which it is running is the RIG camera. So 'this' is the TargetCamera, left or right.
+     * @hidden
+     */
+    Camera.prototype._getWebVRProjectionMatrix = function () {
+        return Matrix.Identity();
+    };
+    /**
+     * This function MUST be overwritten by the different WebVR cameras available.
+     * The context in which it is running is the RIG camera. So 'this' is the TargetCamera, left or right.
+     * @hidden
+     */
+    Camera.prototype._getWebVRViewMatrix = function () {
+        return Matrix.Identity();
+    };
+    /** @hidden */
+    Camera.prototype.setCameraRigParameter = function (name, value) {
+        if (!this._cameraRigParams) {
+            this._cameraRigParams = {};
+        }
+        this._cameraRigParams[name] = value;
+        //provisionnally:
+        if (name === "interaxialDistance") {
+            this._cameraRigParams.stereoHalfAngle = Tools.ToRadians(value / 0.0637);
+        }
+    };
+    /**
+     * needs to be overridden by children so sub has required properties to be copied
+     * @hidden
+     */
+    Camera.prototype.createRigCamera = function (name, cameraIndex) {
+        return null;
+    };
+    /**
+     * May need to be overridden by children
+     * @hidden
+     */
+    Camera.prototype._updateRigCameras = function () {
+        for (var i = 0; i < this._rigCameras.length; i++) {
+            this._rigCameras[i].minZ = this.minZ;
+            this._rigCameras[i].maxZ = this.maxZ;
+            this._rigCameras[i].fov = this.fov;
+            this._rigCameras[i].upVector.copyFrom(this.upVector);
+        }
+        // only update viewport when ANAGLYPH
+        if (this.cameraRigMode === Camera.RIG_MODE_STEREOSCOPIC_ANAGLYPH) {
+            this._rigCameras[0].viewport = this._rigCameras[1].viewport = this.viewport;
+        }
+    };
+    /** @hidden */
+    Camera.prototype._setupInputs = function () {
+    };
+    /**
+     * Serialiaze the camera setup to a json representation
+     * @returns the JSON representation
+     */
+    Camera.prototype.serialize = function () {
+        var serializationObject = SerializationHelper.Serialize(this);
+        serializationObject.uniqueId = this.uniqueId;
+        // Type
+        serializationObject.type = this.getClassName();
+        // Parent
+        if (this.parent) {
+            serializationObject.parentId = this.parent.uniqueId;
+        }
+        if (this.inputs) {
+            this.inputs.serialize(serializationObject);
+        }
+        // Animations
+        SerializationHelper.AppendSerializedAnimations(this, serializationObject);
+        serializationObject.ranges = this.serializeAnimationRanges();
+        serializationObject.isEnabled = this.isEnabled();
+        return serializationObject;
+    };
+    /**
+     * Clones the current camera.
+     * @param name The cloned camera name
+     * @returns the cloned camera
+     */
+    Camera.prototype.clone = function (name) {
+        var camera = SerializationHelper.Clone(Camera.GetConstructorFromName(this.getClassName(), name, this.getScene(), this.interaxialDistance, this.isStereoscopicSideBySide), this);
+        camera.name = name;
+        this.onClonedObservable.notifyObservers(camera);
+        return camera;
+    };
+    /**
+     * Gets the direction of the camera relative to a given local axis.
+     * @param localAxis Defines the reference axis to provide a relative direction.
+     * @return the direction
+     */
+    Camera.prototype.getDirection = function (localAxis) {
+        var result = Vector3.Zero();
+        this.getDirectionToRef(localAxis, result);
+        return result;
+    };
+    Object.defineProperty(Camera.prototype, "absoluteRotation", {
+        /**
+         * Returns the current camera absolute rotation
+         */
+        get: function () {
+            this.getWorldMatrix().decompose(undefined, this._absoluteRotation);
+            return this._absoluteRotation;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    /**
+     * Gets the direction of the camera relative to a given local axis into a passed vector.
+     * @param localAxis Defines the reference axis to provide a relative direction.
+     * @param result Defines the vector to store the result in
+     */
+    Camera.prototype.getDirectionToRef = function (localAxis, result) {
+        Vector3.TransformNormalToRef(localAxis, this.getWorldMatrix(), result);
+    };
+    /**
+     * Gets a camera constructor for a given camera type
+     * @param type The type of the camera to construct (should be equal to one of the camera class name)
+     * @param name The name of the camera the result will be able to instantiate
+     * @param scene The scene the result will construct the camera in
+     * @param interaxial_distance In case of stereoscopic setup, the distance between both eyes
+     * @param isStereoscopicSideBySide In case of stereoscopic setup, should the sereo be side b side
+     * @returns a factory method to construct the camera
+     */
+    Camera.GetConstructorFromName = function (type, name, scene, interaxial_distance, isStereoscopicSideBySide) {
+        if (interaxial_distance === void 0) { interaxial_distance = 0; }
+        if (isStereoscopicSideBySide === void 0) { isStereoscopicSideBySide = true; }
+        var constructorFunc = Node.Construct(type, name, scene, {
+            interaxial_distance: interaxial_distance,
+            isStereoscopicSideBySide: isStereoscopicSideBySide
+        });
+        if (constructorFunc) {
+            return constructorFunc;
+        }
+        // Default to universal camera
+        return function () { return Camera._createDefaultParsedCamera(name, scene); };
+    };
+    /**
+     * Compute the world  matrix of the camera.
+     * @returns the camera world matrix
+     */
+    Camera.prototype.computeWorldMatrix = function () {
+        return this.getWorldMatrix();
+    };
+    /**
+     * Parse a JSON and creates the camera from the parsed information
+     * @param parsedCamera The JSON to parse
+     * @param scene The scene to instantiate the camera in
+     * @returns the newly constructed camera
+     */
+    Camera.Parse = function (parsedCamera, scene) {
+        var type = parsedCamera.type;
+        var construct = Camera.GetConstructorFromName(type, parsedCamera.name, scene, parsedCamera.interaxial_distance, parsedCamera.isStereoscopicSideBySide);
+        var camera = SerializationHelper.Parse(construct, parsedCamera, scene);
+        // Parent
+        if (parsedCamera.parentId) {
+            camera._waitingParentId = parsedCamera.parentId;
+        }
+        //If camera has an input manager, let it parse inputs settings
+        if (camera.inputs) {
+            camera.inputs.parse(parsedCamera);
+            camera._setupInputs();
+        }
+        if (parsedCamera.upVector) {
+            camera.upVector = Vector3.FromArray(parsedCamera.upVector); // need to force the upVector
+        }
+        if (camera.setPosition) { // need to force position
+            camera.position.copyFromFloats(0, 0, 0);
+            camera.setPosition(Vector3.FromArray(parsedCamera.position));
+        }
+        // Target
+        if (parsedCamera.target) {
+            if (camera.setTarget) {
+                camera.setTarget(Vector3.FromArray(parsedCamera.target));
+            }
+        }
+        // Apply 3d rig, when found
+        if (parsedCamera.cameraRigMode) {
+            var rigParams = (parsedCamera.interaxial_distance) ? { interaxialDistance: parsedCamera.interaxial_distance } : {};
+            camera.setCameraRigMode(parsedCamera.cameraRigMode, rigParams);
+        }
+        // Animations
+        if (parsedCamera.animations) {
+            for (var animationIndex = 0; animationIndex < parsedCamera.animations.length; animationIndex++) {
+                var parsedAnimation = parsedCamera.animations[animationIndex];
+                var internalClass = GetClass("BABYLON.Animation");
+                if (internalClass) {
+                    camera.animations.push(internalClass.Parse(parsedAnimation));
+                }
+            }
+            Node.ParseAnimationRanges(camera, parsedCamera, scene);
+        }
+        if (parsedCamera.autoAnimate) {
+            scene.beginAnimation(camera, parsedCamera.autoAnimateFrom, parsedCamera.autoAnimateTo, parsedCamera.autoAnimateLoop, parsedCamera.autoAnimateSpeed || 1.0);
+        }
+        // Check if isEnabled is defined to be back compatible with prior serialized versions.
+        if (parsedCamera.isEnabled !== undefined) {
+            camera.setEnabled(parsedCamera.isEnabled);
+        }
+        return camera;
+    };
+    /** @hidden */
+    Camera._createDefaultParsedCamera = function (name, scene) {
+        throw _WarnImport("UniversalCamera");
+    };
+    /**
+     * This is the default projection mode used by the cameras.
+     * It helps recreating a feeling of perspective and better appreciate depth.
+     * This is the best way to simulate real life cameras.
+     */
+    Camera.PERSPECTIVE_CAMERA = 0;
+    /**
+     * This helps creating camera with an orthographic mode.
+     * Orthographic is commonly used in engineering as a means to produce object specifications that communicate dimensions unambiguously, each line of 1 unit length (cm, meter..whatever) will appear to have the same length everywhere on the drawing. This allows the drafter to dimension only a subset of lines and let the reader know that other lines of that length on the drawing are also that length in reality. Every parallel line in the drawing is also parallel in the object.
+     */
+    Camera.ORTHOGRAPHIC_CAMERA = 1;
+    /**
+     * This is the default FOV mode for perspective cameras.
+     * This setting aligns the upper and lower bounds of the viewport to the upper and lower bounds of the camera frustum.
+     */
+    Camera.FOVMODE_VERTICAL_FIXED = 0;
+    /**
+     * This setting aligns the left and right bounds of the viewport to the left and right bounds of the camera frustum.
+     */
+    Camera.FOVMODE_HORIZONTAL_FIXED = 1;
+    /**
+     * This specifies there is no need for a camera rig.
+     * Basically only one eye is rendered corresponding to the camera.
+     */
+    Camera.RIG_MODE_NONE = 0;
+    /**
+     * Simulates a camera Rig with one blue eye and one red eye.
+     * This can be use with 3d blue and red glasses.
+     */
+    Camera.RIG_MODE_STEREOSCOPIC_ANAGLYPH = 10;
+    /**
+     * Defines that both eyes of the camera will be rendered side by side with a parallel target.
+     */
+    Camera.RIG_MODE_STEREOSCOPIC_SIDEBYSIDE_PARALLEL = 11;
+    /**
+     * Defines that both eyes of the camera will be rendered side by side with a none parallel target.
+     */
+    Camera.RIG_MODE_STEREOSCOPIC_SIDEBYSIDE_CROSSEYED = 12;
+    /**
+     * Defines that both eyes of the camera will be rendered over under each other.
+     */
+    Camera.RIG_MODE_STEREOSCOPIC_OVERUNDER = 13;
+    /**
+     * Defines that both eyes of the camera will be rendered on successive lines interlaced for passive 3d monitors.
+     */
+    Camera.RIG_MODE_STEREOSCOPIC_INTERLACED = 14;
+    /**
+     * Defines that both eyes of the camera should be renderered in a VR mode (carbox).
+     */
+    Camera.RIG_MODE_VR = 20;
+    /**
+     * Defines that both eyes of the camera should be renderered in a VR mode (webVR).
+     */
+    Camera.RIG_MODE_WEBVR = 21;
+    /**
+     * Custom rig mode allowing rig cameras to be populated manually with any number of cameras
+     */
+    Camera.RIG_MODE_CUSTOM = 22;
+    /**
+     * Defines if by default attaching controls should prevent the default javascript event to continue.
+     */
+    Camera.ForceAttachControlToAlwaysPreventDefault = false;
+    __decorate([
+        serializeAsVector3("position")
+    ], Camera.prototype, "_position", void 0);
+    __decorate([
+        serializeAsVector3("upVector")
+    ], Camera.prototype, "_upVector", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "orthoLeft", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "orthoRight", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "orthoBottom", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "orthoTop", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "fov", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "projectionPlaneTilt", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "minZ", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "maxZ", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "inertia", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "mode", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "layerMask", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "fovMode", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "cameraRigMode", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "interaxialDistance", void 0);
+    __decorate([
+        serialize()
+    ], Camera.prototype, "isStereoscopicSideBySide", void 0);
+    return Camera;
+}(Node));
 
 /**
  * This class implement a typical dictionary using a string as key and the generic type T as value.
@@ -40068,6 +42163,7 @@ SerializationHelper._ColorCurvesParser = ColorCurves.Parse;
         _this.SAMPLER3DBGRMAP = false;
         _this.IMAGEPROCESSINGPOSTPROCESS = false;
         _this.EXPOSURE = false;
+        _this.SKIPFINALCOLORCLAMP = false;
         _this.rebuild();
         return _this;
     }
@@ -40120,6 +42216,9 @@ var ImageProcessingConfiguration = /** @class */ (function () {
         this.vignetteCameraFov = 0.5;
         this._vignetteBlendMode = ImageProcessingConfiguration.VIGNETTEMODE_MULTIPLY;
         this._vignetteEnabled = false;
+        /** @hidden */
+        this._skipFinalColorClamp = false;
+        /** @hidden */
         this._applyByPostProcess = false;
         this._isEnabled = true;
         /**
@@ -40347,6 +42446,28 @@ var ImageProcessingConfiguration = /** @class */ (function () {
         enumerable: false,
         configurable: true
     });
+    Object.defineProperty(ImageProcessingConfiguration.prototype, "skipFinalColorClamp", {
+        /**
+         * If apply by post process is set to true, setting this to true will skip the the final color clamp step in the fragment shader
+         * Applies to PBR materials.
+         */
+        get: function () {
+            return this._skipFinalColorClamp;
+        },
+        /**
+         * If apply by post process is set to true, setting this to true will skip the the final color clamp step in the fragment shader
+         * Applies to PBR materials.
+         */
+        set: function (value) {
+            if (this._skipFinalColorClamp === value) {
+                return;
+            }
+            this._skipFinalColorClamp = value;
+            this._updateParameters();
+        },
+        enumerable: false,
+        configurable: true
+    });
     Object.defineProperty(ImageProcessingConfiguration.prototype, "applyByPostProcess", {
         /**
          * Gets whether the image processing is applied through a post process or not.
@@ -40451,6 +42572,7 @@ var ImageProcessingConfiguration = /** @class */ (function () {
             defines.COLORGRADING = false;
             defines.COLORGRADING3D = false;
             defines.IMAGEPROCESSING = false;
+            defines.SKIPFINALCOLORCLAMP = this.skipFinalColorClamp;
             defines.IMAGEPROCESSINGPOSTPROCESS = this.applyByPostProcess && this._isEnabled;
             return;
         }
@@ -40479,6 +42601,7 @@ var ImageProcessingConfiguration = /** @class */ (function () {
         defines.SAMPLER3DGREENDEPTH = this.colorGradingWithGreenDepth;
         defines.SAMPLER3DBGRMAP = this.colorGradingBGR;
         defines.IMAGEPROCESSINGPOSTPROCESS = this.applyByPostProcess;
+        defines.SKIPFINALCOLORCLAMP = this.skipFinalColorClamp;
         defines.IMAGEPROCESSING = defines.VIGNETTE || defines.TONEMAPPING || defines.CONTRAST || defines.EXPOSURE || defines.COLORCURVES || defines.COLORGRADING;
     };
     /**
@@ -40637,6 +42760,9 @@ var ImageProcessingConfiguration = /** @class */ (function () {
     __decorate([
         serialize()
     ], ImageProcessingConfiguration.prototype, "_vignetteEnabled", void 0);
+    __decorate([
+        serialize()
+    ], ImageProcessingConfiguration.prototype, "_skipFinalColorClamp", void 0);
     __decorate([
         serialize()
     ], ImageProcessingConfiguration.prototype, "_applyByPostProcess", void 0);
@@ -41039,9 +43165,14 @@ var RenderingGroup = /** @class */ (function () {
             this.onBeforeTransparentRendering();
         }
         // Transparent
-        if (this._transparentSubMeshes.length !== 0) {
+        if (this._transparentSubMeshes.length !== 0 || this._scene.useOrderIndependentTransparency) {
             engine.setStencilBuffer(stencilState);
-            this._renderTransparent(this._transparentSubMeshes);
+            if (this._scene.useOrderIndependentTransparency) {
+                this._scene.depthPeelingRenderer.render(this._transparentSubMeshes);
+            }
+            else {
+                this._renderTransparent(this._transparentSubMeshes);
+            }
             engine.setAlphaMode(0);
         }
         // Set back stencil to false in case it changes before the edge renderer.
@@ -41522,6 +43653,7 @@ var SceneComponentConstants = /** @class */ (function () {
     SceneComponentConstants.NAME_GEOMETRYBUFFERRENDERER = "GeometryBufferRenderer";
     SceneComponentConstants.NAME_PREPASSRENDERER = "PrePassRenderer";
     SceneComponentConstants.NAME_DEPTHRENDERER = "DepthRenderer";
+    SceneComponentConstants.NAME_DEPTHPEELINGRENDERER = "DepthPeelingRenderer";
     SceneComponentConstants.NAME_POSTPROCESSRENDERPIPELINEMANAGER = "PostProcessRenderPipelineManager";
     SceneComponentConstants.NAME_SPRITE = "Sprite";
     SceneComponentConstants.NAME_SUBSURFACE = "SubSurface";
@@ -41915,8 +44047,6 @@ var PointerInput;
     PointerInput[PointerInput["DeltaHorizontal"] = 10] = "DeltaHorizontal";
     /** Delta Y */
     PointerInput[PointerInput["DeltaVertical"] = 11] = "DeltaVertical";
-    /** MoveBeing Hijack for simultaneous buttons pressed for instance */
-    PointerInput[PointerInput["FakeMove"] = 12] = "FakeMove";
 })(PointerInput || (PointerInput = {}));
 /**
  * Enum for Dual Shock Gamepad
@@ -42149,8 +44279,7 @@ var DeviceEventFactory = /** @class */ (function () {
         if (inputIndex === PointerInput.Horizontal ||
             inputIndex === PointerInput.Vertical ||
             inputIndex === PointerInput.DeltaHorizontal ||
-            inputIndex === PointerInput.DeltaVertical ||
-            inputIndex === PointerInput.FakeMove) {
+            inputIndex === PointerInput.DeltaVertical) {
             evt.type = "pointermove";
         }
         else if (inputIndex >= PointerInput.LeftClick && inputIndex <= PointerInput.RightClick) {
@@ -42262,7 +44391,7 @@ var DeviceEventFactory = /** @class */ (function () {
 var NativeDeviceInputWrapper = /** @class */ (function () {
     function NativeDeviceInputWrapper(nativeInput) {
         var _this = this;
-        this._nativeInput = nativeInput;
+        this._nativeInput = nativeInput || this._createDummyNativeInput();
         this.onDeviceConnectedObservable = new Observable();
         this.onDeviceDisconnectedObservable = new Observable();
         this.onInputChangedObservable = new Observable();
@@ -42317,6 +44446,21 @@ var NativeDeviceInputWrapper = /** @class */ (function () {
         this.onDeviceDisconnectedObservable.clear();
         this.onInputChangedObservable.clear();
     };
+    /**
+     * For versions of BabylonNative that don't have the NativeInput plugin initialized, create a dummy version
+     * @returns Object with dummy functions
+     */
+    NativeDeviceInputWrapper.prototype._createDummyNativeInput = function () {
+        var nativeInput = {
+            onDeviceConnected: function (deviceType, deviceSlot) { },
+            onDeviceDisconnected: function (deviceType, deviceSlot) { },
+            onInputChanged: function (deviceType, deviceSlot, inputIndex, previousState, currentState, eventData) { },
+            pollInput: function () { return 0; },
+            isDeviceAvailable: function () { return false; },
+            dispose: function () { },
+        };
+        return nativeInput;
+    };
     return NativeDeviceInputWrapper;
 }());
 
@@ -42328,6 +44472,7 @@ var WebDeviceInputSystem = /** @class */ (function () {
         this._inputs = [];
         this._keyboardActive = false;
         this._pointerActive = false;
+        this._usingSafari = Tools.IsSafari();
         this._keyboardDownEvent = function (evt) { };
         this._keyboardUpEvent = function (evt) { };
         this._keyboardBlurEvent = function (evt) { };
@@ -42337,7 +44482,7 @@ var WebDeviceInputSystem = /** @class */ (function () {
         this._pointerWheelEvent = function (evt) { };
         this._pointerBlurEvent = function (evt) { };
         this._mouseId = -1;
-        this._isUsingFirefox = navigator.userAgent.indexOf("Firefox") !== -1;
+        this._isUsingFirefox = navigator && navigator.userAgent && navigator.userAgent.indexOf("Firefox") !== -1;
         // Array to store active Pointer ID values; prevents issues with negative pointerIds
         this._activeTouchIds = [];
         this._rollingTouchId = 0; // Rolling ID number to assign; emulates Chrome assignment
@@ -42559,7 +44704,7 @@ var WebDeviceInputSystem = /** @class */ (function () {
                         deviceEvent.deviceType = DeviceType.Keyboard;
                         deviceEvent.deviceSlot = 0;
                         deviceEvent.inputIndex = i;
-                        deviceEvent.currentState = 1;
+                        deviceEvent.currentState = 0;
                         deviceEvent.previousState = 1;
                         _this.onInputChangedObservable.notifyObservers(deviceEvent);
                     }
@@ -42601,44 +44746,36 @@ var WebDeviceInputSystem = /** @class */ (function () {
                 // The browser might use a move event in case
                 // of simultaneous mouse buttons click for instance. So
                 // in this case we stil need to propagate it.
-                var fireFakeMove = true;
                 if (previousHorizontal !== evt.clientX) {
                     deviceEvent.inputIndex = PointerInput.Horizontal;
                     deviceEvent.previousState = previousHorizontal;
                     deviceEvent.currentState = pointer[PointerInput.Horizontal];
                     _this.onInputChangedObservable.notifyObservers(deviceEvent);
-                    fireFakeMove = false;
                 }
                 if (previousVertical !== evt.clientY) {
                     deviceEvent.inputIndex = PointerInput.Vertical;
                     deviceEvent.previousState = previousVertical;
                     deviceEvent.currentState = pointer[PointerInput.Vertical];
                     _this.onInputChangedObservable.notifyObservers(deviceEvent);
-                    fireFakeMove = false;
                 }
                 if (pointer[PointerInput.DeltaHorizontal] !== 0) {
                     deviceEvent.inputIndex = PointerInput.DeltaHorizontal;
                     deviceEvent.previousState = previousDeltaHorizontal;
                     deviceEvent.currentState = pointer[PointerInput.DeltaHorizontal];
                     _this.onInputChangedObservable.notifyObservers(deviceEvent);
-                    fireFakeMove = false;
                 }
                 if (pointer[PointerInput.DeltaVertical] !== 0) {
                     deviceEvent.inputIndex = PointerInput.DeltaVertical;
                     deviceEvent.previousState = previousDeltaVertical;
                     deviceEvent.currentState = pointer[PointerInput.DeltaVertical];
                     _this.onInputChangedObservable.notifyObservers(deviceEvent);
-                    fireFakeMove = false;
                 }
                 // Lets Propagate the event for move with same position.
-                if (fireFakeMove && evt.button !== -1) {
-                    deviceEvent.inputIndex = PointerInput.FakeMove;
-                    deviceEvent.previousState = 0;
-                    deviceEvent.currentState = 0;
-                    // The pointer buttons in PointerInput are in the same order as they are used for the MouseEvent button property, just offset by 2.
-                    // eg. PointerInput.LeftClick = 2 vs MouseEvent.button = Left Click = 0
-                    // Because of this, we need to offset our indices by two when storing in our inputs array.
+                if (!_this._usingSafari && evt.button !== -1) {
+                    deviceEvent.inputIndex = evt.button + 2;
+                    deviceEvent.previousState = pointer[evt.button + 2];
                     pointer[evt.button + 2] = (pointer[evt.button + 2] ? 0 : 1); // Reverse state of button if evt.button has value
+                    deviceEvent.currentState = pointer[evt.button + 2];
                     _this.onInputChangedObservable.notifyObservers(deviceEvent);
                 }
             }
@@ -42670,7 +44807,7 @@ var WebDeviceInputSystem = /** @class */ (function () {
                             _this._mouseId = evt.pointerId;
                         }
                     }
-                    if (!document.pointerLockElement) {
+                    if (!document.pointerLockElement && _this._elementToAttachTo.hasPointerCapture) {
                         try {
                             _this._elementToAttachTo.setPointerCapture(_this._mouseId);
                         }
@@ -42680,7 +44817,7 @@ var WebDeviceInputSystem = /** @class */ (function () {
                     }
                 }
                 else { // Touch; Since touches are dynamically assigned, only set capture if we have an id
-                    if (evt.pointerId && !document.pointerLockElement) {
+                    if (evt.pointerId && !document.pointerLockElement && _this._elementToAttachTo.hasPointerCapture) {
                         try {
                             _this._elementToAttachTo.setPointerCapture(evt.pointerId);
                         }
@@ -42714,7 +44851,7 @@ var WebDeviceInputSystem = /** @class */ (function () {
             }
         });
         this._pointerUpEvent = (function (evt) {
-            var _a;
+            var _a, _b, _c, _d, _e;
             var deviceType = _this._getPointerType(evt);
             var deviceSlot = (deviceType === DeviceType.Mouse) ? 0 : _this._activeTouchIds.indexOf(evt.pointerId);
             var pointer = (_a = _this._inputs[deviceType]) === null || _a === void 0 ? void 0 : _a[deviceSlot];
@@ -42743,10 +44880,10 @@ var WebDeviceInputSystem = /** @class */ (function () {
                 deviceEvent.inputIndex = evt.button + 2;
                 deviceEvent.previousState = previousButton;
                 deviceEvent.currentState = pointer[evt.button + 2];
-                if (deviceType === DeviceType.Mouse && _this._mouseId >= 0 && _this._elementToAttachTo.hasPointerCapture(_this._mouseId)) {
+                if (deviceType === DeviceType.Mouse && _this._mouseId >= 0 && ((_c = (_b = _this._elementToAttachTo).hasPointerCapture) === null || _c === void 0 ? void 0 : _c.call(_b, _this._mouseId))) {
                     _this._elementToAttachTo.releasePointerCapture(_this._mouseId);
                 }
-                else if (evt.pointerId && _this._elementToAttachTo.hasPointerCapture(evt.pointerId)) {
+                else if (evt.pointerId && ((_e = (_d = _this._elementToAttachTo).hasPointerCapture) === null || _e === void 0 ? void 0 : _e.call(_d, evt.pointerId))) {
                     _this._elementToAttachTo.releasePointerCapture(evt.pointerId);
                 }
                 _this.onInputChangedObservable.notifyObservers(deviceEvent);
@@ -42783,11 +44920,11 @@ var WebDeviceInputSystem = /** @class */ (function () {
             /* */
         }
         this._pointerBlurEvent = (function (evt) {
-            var _a;
+            var _a, _b, _c, _d, _e;
             // Handle mouse buttons
             if (_this.isDeviceAvailable(DeviceType.Mouse)) {
                 var pointer = _this._inputs[DeviceType.Mouse][0];
-                if (_this._mouseId >= 0 && _this._elementToAttachTo.hasPointerCapture(_this._mouseId)) {
+                if (_this._mouseId >= 0 && ((_b = (_a = _this._elementToAttachTo).hasPointerCapture) === null || _b === void 0 ? void 0 : _b.call(_a, _this._mouseId))) {
                     _this._elementToAttachTo.releasePointerCapture(_this._mouseId);
                 }
                 for (var i = 0; i <= PointerInput.BrowserForward; i++) {
@@ -42811,10 +44948,10 @@ var WebDeviceInputSystem = /** @class */ (function () {
                 for (var deviceSlotKey in Object.keys(_this._activeTouchIds)) {
                     var deviceSlot = +deviceSlotKey;
                     var pointerId = _this._activeTouchIds[deviceSlot];
-                    if (_this._elementToAttachTo.hasPointerCapture(pointerId)) {
+                    if ((_d = (_c = _this._elementToAttachTo).hasPointerCapture) === null || _d === void 0 ? void 0 : _d.call(_c, pointerId)) {
                         _this._elementToAttachTo.releasePointerCapture(pointerId);
                     }
-                    if (((_a = pointer[deviceSlot]) === null || _a === void 0 ? void 0 : _a[PointerInput.LeftClick]) === 1) {
+                    if (((_e = pointer[deviceSlot]) === null || _e === void 0 ? void 0 : _e[PointerInput.LeftClick]) === 1) {
                         pointer[deviceSlot][PointerInput.LeftClick] = 0;
                         var evt_3 = DeviceEventFactory.CreateDeviceEvent(DeviceType.Touch, pointerId, PointerInput.LeftClick, 1, _this, _this._elementToAttachTo);
                         var deviceEvent = evt_3;
@@ -43004,7 +45141,12 @@ var DeviceInputSystem = /** @class */ (function () {
     DeviceInputSystem.Create = function (engine) {
         // If running in Babylon Native, then defer to the native input system, which has the same public contract
         if (!engine.deviceInputSystem) {
-            engine.deviceInputSystem = (typeof _native !== 'undefined' && _native.DeviceInputSystem) ? new NativeDeviceInputWrapper(new _native.DeviceInputSystem(engine)) : new WebDeviceInputSystem(engine);
+            if (typeof _native !== 'undefined') {
+                engine.deviceInputSystem = (_native.DeviceInputSystem) ? new NativeDeviceInputWrapper(new _native.DeviceInputSystem()) : new NativeDeviceInputWrapper();
+            }
+            else {
+                engine.deviceInputSystem = new WebDeviceInputSystem(engine);
+            }
         }
         return engine.deviceInputSystem;
     };
@@ -43422,17 +45564,16 @@ var InputManager = /** @class */ (function () {
         if (attachMove === void 0) { attachMove = true; }
         if (elementToAttachTo === void 0) { elementToAttachTo = null; }
         var scene = this._scene;
+        var engine = scene.getEngine();
         if (!elementToAttachTo) {
-            elementToAttachTo = scene.getEngine().getInputElement();
-        }
-        if (!elementToAttachTo) {
-            return;
+            elementToAttachTo = engine.getInputElement();
         }
         if (this._alreadyAttached) {
             this.detachControl();
         }
-        this._alreadyAttachedTo = elementToAttachTo;
-        var engine = scene.getEngine();
+        if (elementToAttachTo) {
+            this._alreadyAttachedTo = elementToAttachTo;
+        }
         if (!this._deviceInputSystem) {
             this._deviceInputSystem = DeviceInputSystem.Create(engine);
         }
@@ -43585,7 +45726,7 @@ var InputManager = /** @class */ (function () {
                 };
             }
             // Meshes
-            var pickResult = scene.pick(_this._unTranslatedPointerX, _this._unTranslatedPointerY, scene.pointerMovePredicate, false, scene.cameraToUseForPointers);
+            var pickResult = scene.pick(_this._unTranslatedPointerX, _this._unTranslatedPointerY, scene.pointerMovePredicate, false, scene.cameraToUseForPointers, scene.pointerMoveTrianglePredicate);
             _this._processPointerMove(pickResult, evt);
         };
         this._onPointerDown = function (evt) {
@@ -43664,7 +45805,7 @@ var InputManager = /** @class */ (function () {
                         }
                     }
                 }
-                if (!_this._pointerCaptures[evt.pointerId]) {
+                if (!_this._pointerCaptures[evt.pointerId] && evt.buttons > 0) {
                     return;
                 }
                 _this._pointerCaptures[evt.pointerId] = false;
@@ -43748,8 +45889,7 @@ var InputManager = /** @class */ (function () {
                     if (eventData.inputIndex === PointerInput.Horizontal ||
                         eventData.inputIndex === PointerInput.Vertical ||
                         eventData.inputIndex === PointerInput.DeltaHorizontal ||
-                        eventData.inputIndex === PointerInput.DeltaVertical ||
-                        eventData.inputIndex === PointerInput.FakeMove) {
+                        eventData.inputIndex === PointerInput.DeltaVertical) {
                         _this._onPointerMove(evt);
                     }
                     else if (eventData.inputIndex === PointerInput.MouseWheelX || eventData.inputIndex === PointerInput.MouseWheelY || eventData.inputIndex === PointerInput.MouseWheelZ) {
@@ -43764,15 +45904,14 @@ var InputManager = /** @class */ (function () {
      * Detaches all event handlers
      */
     InputManager.prototype.detachControl = function () {
-        if (!this._alreadyAttachedTo || !this._alreadyAttached) {
-            return;
+        if (this._alreadyAttached) {
+            this._deviceInputSystem.onInputChangedObservable.remove(this._onInputObserver);
+            // Cursor
+            if (this._alreadyAttachedTo && !this._scene.doNotHandleCursors) {
+                this._alreadyAttachedTo.style.cursor = this._scene.defaultCursor;
+            }
+            this._alreadyAttached = false;
         }
-        this._deviceInputSystem.onInputChangedObservable.remove(this._onInputObserver);
-        // Cursor
-        if (!this._scene.doNotHandleCursors) {
-            this._alreadyAttachedTo.style.cursor = this._scene.defaultCursor;
-        }
-        this._alreadyAttached = false;
     };
     /**
      * Force the value of meshUnderPointer
@@ -43839,125 +45978,6 @@ var InputManager = /** @class */ (function () {
     /** If you need to check double click without raising a single click at first click, enable this flag */
     InputManager.ExclusiveDoubleClickMode = false;
     return InputManager;
-}());
-
-/**
- * Represents a camera frustum
- */
-var Frustum = /** @class */ (function () {
-    function Frustum() {
-    }
-    /**
-     * Gets the planes representing the frustum
-     * @param transform matrix to be applied to the returned planes
-     * @returns a new array of 6 Frustum planes computed by the given transformation matrix.
-     */
-    Frustum.GetPlanes = function (transform) {
-        var frustumPlanes = [];
-        for (var index = 0; index < 6; index++) {
-            frustumPlanes.push(new Plane(0.0, 0.0, 0.0, 0.0));
-        }
-        Frustum.GetPlanesToRef(transform, frustumPlanes);
-        return frustumPlanes;
-    };
-    /**
-     * Gets the near frustum plane transformed by the transform matrix
-     * @param transform transformation matrix to be applied to the resulting frustum plane
-     * @param frustumPlane the resuling frustum plane
-     */
-    Frustum.GetNearPlaneToRef = function (transform, frustumPlane) {
-        var m = transform.m;
-        frustumPlane.normal.x = m[3] + m[2];
-        frustumPlane.normal.y = m[7] + m[6];
-        frustumPlane.normal.z = m[11] + m[10];
-        frustumPlane.d = m[15] + m[14];
-        frustumPlane.normalize();
-    };
-    /**
-     * Gets the far frustum plane transformed by the transform matrix
-     * @param transform transformation matrix to be applied to the resulting frustum plane
-     * @param frustumPlane the resuling frustum plane
-     */
-    Frustum.GetFarPlaneToRef = function (transform, frustumPlane) {
-        var m = transform.m;
-        frustumPlane.normal.x = m[3] - m[2];
-        frustumPlane.normal.y = m[7] - m[6];
-        frustumPlane.normal.z = m[11] - m[10];
-        frustumPlane.d = m[15] - m[14];
-        frustumPlane.normalize();
-    };
-    /**
-     * Gets the left frustum plane transformed by the transform matrix
-     * @param transform transformation matrix to be applied to the resulting frustum plane
-     * @param frustumPlane the resuling frustum plane
-     */
-    Frustum.GetLeftPlaneToRef = function (transform, frustumPlane) {
-        var m = transform.m;
-        frustumPlane.normal.x = m[3] + m[0];
-        frustumPlane.normal.y = m[7] + m[4];
-        frustumPlane.normal.z = m[11] + m[8];
-        frustumPlane.d = m[15] + m[12];
-        frustumPlane.normalize();
-    };
-    /**
-     * Gets the right frustum plane transformed by the transform matrix
-     * @param transform transformation matrix to be applied to the resulting frustum plane
-     * @param frustumPlane the resuling frustum plane
-     */
-    Frustum.GetRightPlaneToRef = function (transform, frustumPlane) {
-        var m = transform.m;
-        frustumPlane.normal.x = m[3] - m[0];
-        frustumPlane.normal.y = m[7] - m[4];
-        frustumPlane.normal.z = m[11] - m[8];
-        frustumPlane.d = m[15] - m[12];
-        frustumPlane.normalize();
-    };
-    /**
-     * Gets the top frustum plane transformed by the transform matrix
-     * @param transform transformation matrix to be applied to the resulting frustum plane
-     * @param frustumPlane the resuling frustum plane
-     */
-    Frustum.GetTopPlaneToRef = function (transform, frustumPlane) {
-        var m = transform.m;
-        frustumPlane.normal.x = m[3] - m[1];
-        frustumPlane.normal.y = m[7] - m[5];
-        frustumPlane.normal.z = m[11] - m[9];
-        frustumPlane.d = m[15] - m[13];
-        frustumPlane.normalize();
-    };
-    /**
-     * Gets the bottom frustum plane transformed by the transform matrix
-     * @param transform transformation matrix to be applied to the resulting frustum plane
-     * @param frustumPlane the resuling frustum plane
-     */
-    Frustum.GetBottomPlaneToRef = function (transform, frustumPlane) {
-        var m = transform.m;
-        frustumPlane.normal.x = m[3] + m[1];
-        frustumPlane.normal.y = m[7] + m[5];
-        frustumPlane.normal.z = m[11] + m[9];
-        frustumPlane.d = m[15] + m[13];
-        frustumPlane.normalize();
-    };
-    /**
-     * Sets the given array "frustumPlanes" with the 6 Frustum planes computed by the given transformation matrix.
-     * @param transform transformation matrix to be applied to the resulting frustum planes
-     * @param frustumPlanes the resuling frustum planes
-     */
-    Frustum.GetPlanesToRef = function (transform, frustumPlanes) {
-        // Near
-        Frustum.GetNearPlaneToRef(transform, frustumPlanes[0]);
-        // Far
-        Frustum.GetFarPlaneToRef(transform, frustumPlanes[1]);
-        // Left
-        Frustum.GetLeftPlaneToRef(transform, frustumPlanes[2]);
-        // Right
-        Frustum.GetRightPlaneToRef(transform, frustumPlanes[3]);
-        // Top
-        Frustum.GetTopPlaneToRef(transform, frustumPlanes[4]);
-        // Bottom
-        Frustum.GetBottomPlaneToRef(transform, frustumPlanes[5]);
-    };
-    return Frustum;
 }());
 
 /**
@@ -44102,7 +46122,7 @@ var ComputePressureObserverWrapper = /** @class */ (function () {
          * Returns true if ComputePressureObserver is available for use, false otherwise.
          */
         get: function () {
-            return DomManagement.IsWindowObjectExist() && 'ComputePressureObserver' in window;
+            return IsWindowObjectExist() && 'ComputePressureObserver' in window;
         },
         enumerable: false,
         configurable: true
@@ -44123,6 +46143,73 @@ var ComputePressureObserverWrapper = /** @class */ (function () {
     };
     return ComputePressureObserverWrapper;
 }());
+
+/** @hidden */
+var _injectLTSScene = function (Scene) {
+    Scene.prototype.setActiveCameraByID = function (id) {
+        return this.setActiveCameraById(id);
+    };
+    Scene.prototype.getLastMaterialByID = function (id) {
+        return this.getLastMaterialById(id);
+    };
+    Scene.prototype.getMaterialByID = function (id) {
+        return this.getMaterialById(id);
+    };
+    Scene.prototype.getTextureByUniqueID = function (uniqueId) {
+        return this.getTextureByUniqueId(uniqueId);
+    };
+    Scene.prototype.getCameraByID = function (id) {
+        return this.getCameraById(id);
+    };
+    Scene.prototype.getCameraByUniqueID = function (uniqueId) {
+        return this.getCameraByUniqueId(uniqueId);
+    };
+    Scene.prototype.getBoneByID = function (id) {
+        return this.getBoneById(id);
+    };
+    Scene.prototype.getLightByID = function (id) {
+        return this.getLightById(id);
+    };
+    Scene.prototype.getLightByUniqueID = function (uniqueId) {
+        return this.getLightByUniqueId(uniqueId);
+    };
+    Scene.prototype.getParticleSystemByID = function (id) {
+        return this.getParticleSystemById(id);
+    };
+    Scene.prototype.getGeometryByID = function (id) {
+        return this.getGeometryById(id);
+    };
+    Scene.prototype.getMeshByID = function (id) {
+        return this.getMeshById(id);
+    };
+    Scene.prototype.getMeshesByID = function (id) {
+        return this.getMeshesById(id);
+    };
+    Scene.prototype.getTransformNodeByID = function (id) {
+        return this.getTransformNodeById(id);
+    };
+    Scene.prototype.getTransformNodeByUniqueID = function (uniqueId) {
+        return this.getTransformNodeByUniqueId(uniqueId);
+    };
+    Scene.prototype.getTransformNodesByID = function (id) {
+        return this.getTransformNodesById(id);
+    };
+    Scene.prototype.getMeshByUniqueID = function (uniqueId) {
+        return this.getMeshByUniqueId(uniqueId);
+    };
+    Scene.prototype.getLastMeshByID = function (id) {
+        return this.getLastMeshById(id);
+    };
+    Scene.prototype.getLastEntryByID = function (id) {
+        return this.getLastEntryById(id);
+    };
+    Scene.prototype.getNodeByID = function (id) {
+        return this.getNodeById(id);
+    };
+    Scene.prototype.getLastSkeletonByID = function (id) {
+        return this.getLastSkeletonById(id);
+    };
+};
 
 /**
  * Represents a scene to be rendered by the engine.
@@ -44756,7 +46843,7 @@ var Scene = /** @class */ (function (_super) {
         if (PostProcessManager) {
             _this.postProcessManager = new PostProcessManager(_this);
         }
-        if (DomManagement.IsWindowObjectExist()) {
+        if (IsWindowObjectExist()) {
             _this.attachControl();
         }
         // Uniform Buffer
@@ -44793,14 +46880,14 @@ var Scene = /** @class */ (function (_super) {
      * @returns The default material
      */
     Scene.DefaultMaterialFactory = function (scene) {
-        throw _DevTools.WarnImport("StandardMaterial");
+        throw _WarnImport("StandardMaterial");
     };
     /**
      * Factory used to create the a collision coordinator.
      * @returns The collision coordinator
      */
     Scene.CollisionCoordinatorFactory = function () {
-        throw _DevTools.WarnImport("DefaultCollisionCoordinator");
+        throw _WarnImport("DefaultCollisionCoordinator");
     };
     Object.defineProperty(Scene.prototype, "environmentTexture", {
         /**
@@ -45559,11 +47646,7 @@ var Scene = /** @class */ (function (_super) {
         this._renderId++;
     };
     Scene.prototype._createUbo = function () {
-        this._sceneUbo = new UniformBuffer(this._engine, undefined, false, "scene");
-        this._sceneUbo.addUniform("viewProjection", 16);
-        this._sceneUbo.addUniform("view", 16);
-        this._sceneUbo.addUniform("projection", 16);
-        this._sceneUbo.addUniform("vEyePosition", 4);
+        this.setSceneUniformBuffer(this.createSceneUniformBuffer());
     };
     /**
      * Use this method to simulate a pointer move on a mesh
@@ -45627,9 +47710,11 @@ var Scene = /** @class */ (function (_super) {
     /**
      * This function will check if the scene can be rendered (textures are loaded, shaders are compiled)
      * Delay loaded resources are not taking in account
+     * @param checkRenderTargets true to also check that the meshes rendered as part of a render target are ready (default: true)
      * @return true if all required resources are ready
      */
-    Scene.prototype.isReady = function () {
+    Scene.prototype.isReady = function (checkRenderTargets) {
+        if (checkRenderTargets === void 0) { checkRenderTargets = true; }
         if (this._isDisposed) {
             return false;
         }
@@ -45644,6 +47729,10 @@ var Scene = /** @class */ (function (_super) {
             return false;
         }
         // Meshes
+        if (checkRenderTargets) {
+            this._processedMaterials.reset();
+            this._renderTargets.reset();
+        }
         for (index = 0; index < this.meshes.length; index++) {
             var mesh = this.meshes[index];
             if (!mesh.isEnabled()) {
@@ -45663,6 +47752,41 @@ var Scene = /** @class */ (function (_super) {
                     return false;
                 }
             }
+            if (!checkRenderTargets) {
+                continue;
+            }
+            var mat = mesh.material || this.defaultMaterial;
+            if (mat) {
+                if (mat._storeEffectOnSubMeshes) {
+                    for (var _b = 0, _c = mesh.subMeshes; _b < _c.length; _b++) {
+                        var subMesh = _c[_b];
+                        var material = subMesh.getMaterial();
+                        if (material && material.hasRenderTargetTextures && material.getRenderTargetTextures != null) {
+                            if (this._processedMaterials.indexOf(material) === -1) {
+                                this._processedMaterials.push(material);
+                                this._renderTargets.concatWithNoDuplicate(material.getRenderTargetTextures());
+                            }
+                        }
+                    }
+                }
+                else {
+                    if (mat.hasRenderTargetTextures && mat.getRenderTargetTextures != null) {
+                        if (this._processedMaterials.indexOf(mat) === -1) {
+                            this._processedMaterials.push(mat);
+                            this._renderTargets.concatWithNoDuplicate(mat.getRenderTargetTextures());
+                        }
+                    }
+                }
+            }
+        }
+        // Render targets
+        if (checkRenderTargets) {
+            for (index = 0; index < this._renderTargets.length; ++index) {
+                var rtt = this._renderTargets.data[index];
+                if (!rtt.isReadyForRendering()) {
+                    return false;
+                }
+            }
         }
         // Geometries
         for (index = 0; index < this.geometries.length; index++) {
@@ -45673,8 +47797,8 @@ var Scene = /** @class */ (function (_super) {
         }
         // Post-processes
         if (this.activeCameras && this.activeCameras.length > 0) {
-            for (var _b = 0, _c = this.activeCameras; _b < _c.length; _b++) {
-                var camera = _c[_b];
+            for (var _d = 0, _e = this.activeCameras; _d < _e.length; _d++) {
+                var camera = _e[_d];
                 if (!camera.isReady(true)) {
                     return false;
                 }
@@ -45686,8 +47810,8 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         // Particles
-        for (var _d = 0, _e = this.particleSystems; _d < _e.length; _d++) {
-            var particleSystem = _e[_d];
+        for (var _f = 0, _g = this.particleSystems; _f < _g.length; _f++) {
+            var particleSystem = _g[_f];
             if (!particleSystem.isReady()) {
                 return false;
             }
@@ -45791,34 +47915,39 @@ var Scene = /** @class */ (function (_super) {
     /**
      * Registers a function to be executed when the scene is ready
      * @param {Function} func - the function to be executed
+     * @param checkRenderTargets true to also check that the meshes rendered as part of a render target are ready (default: false)
      */
-    Scene.prototype.executeWhenReady = function (func) {
+    Scene.prototype.executeWhenReady = function (func, checkRenderTargets) {
         var _this = this;
+        if (checkRenderTargets === void 0) { checkRenderTargets = false; }
         this.onReadyObservable.add(func);
         if (this._executeWhenReadyTimeoutId !== -1) {
             return;
         }
         this._executeWhenReadyTimeoutId = setTimeout(function () {
-            _this._checkIsReady();
+            _this._checkIsReady(checkRenderTargets);
         }, 150);
     };
     /**
      * Returns a promise that resolves when the scene is ready
+     * @param checkRenderTargets true to also check that the meshes rendered as part of a render target are ready (default: false)
      * @returns A promise that resolves when the scene is ready
      */
-    Scene.prototype.whenReadyAsync = function () {
+    Scene.prototype.whenReadyAsync = function (checkRenderTargets) {
         var _this = this;
+        if (checkRenderTargets === void 0) { checkRenderTargets = false; }
         return new Promise(function (resolve) {
             _this.executeWhenReady(function () {
                 resolve();
-            });
+            }, checkRenderTargets);
         });
     };
     /** @hidden */
-    Scene.prototype._checkIsReady = function () {
+    Scene.prototype._checkIsReady = function (checkRenderTargets) {
         var _this = this;
+        if (checkRenderTargets === void 0) { checkRenderTargets = false; }
         this._registerTransientComponents();
-        if (this.isReady()) {
+        if (this.isReady(checkRenderTargets)) {
             this.onReadyObservable.notifyObservers(this);
             this.onReadyObservable.clear();
             this._executeWhenReadyTimeoutId = -1;
@@ -45830,7 +47959,7 @@ var Scene = /** @class */ (function (_super) {
             return;
         }
         this._executeWhenReadyTimeoutId = setTimeout(function () {
-            _this._checkIsReady();
+            _this._checkIsReady(checkRenderTargets);
         }, 150);
     };
     Object.defineProperty(Scene.prototype, "animatables", {
@@ -45910,6 +48039,28 @@ var Scene = /** @class */ (function (_super) {
      */
     Scene.prototype.getSceneUniformBuffer = function () {
         return this._multiviewSceneUbo ? this._multiviewSceneUbo : this._sceneUbo;
+    };
+    /**
+     * Creates a scene UBO
+     * @param name name of the uniform buffer (optional, for debugging purpose only)
+     * @returns a new ubo
+     */
+    Scene.prototype.createSceneUniformBuffer = function (name) {
+        var sceneUbo = new UniformBuffer(this._engine, undefined, false, name !== null && name !== void 0 ? name : "scene");
+        sceneUbo.addUniform("viewProjection", 16);
+        sceneUbo.addUniform("view", 16);
+        sceneUbo.addUniform("projection", 16);
+        sceneUbo.addUniform("vEyePosition", 4);
+        return sceneUbo;
+    };
+    /**
+     * Sets the scene ubo
+     * @param ubo the ubo to set for the scene
+     */
+    Scene.prototype.setSceneUniformBuffer = function (ubo) {
+        this._sceneUbo = ubo;
+        this._viewUpdateFlag = -1;
+        this._projectionUpdateFlag = -1;
     };
     /**
      * Gets an unique (relatively to the current scene) Id
@@ -46364,15 +48515,6 @@ var Scene = /** @class */ (function (_super) {
      * sets the active camera of the scene using its Id
      * @param id defines the camera's Id
      * @return the new active camera or null if none found.
-     * @deprecated Please use setActiveCameraById instead
-     */
-    Scene.prototype.setActiveCameraByID = function (id) {
-        return this.setActiveCameraById(id);
-    };
-    /**
-     * sets the active camera of the scene using its Id
-     * @param id defines the camera's Id
-     * @return the new active camera or null if none found.
      */
     Scene.prototype.setActiveCameraById = function (id) {
         var camera = this.getCameraById(id);
@@ -46425,15 +48567,6 @@ var Scene = /** @class */ (function (_super) {
      * get a material using its id
      * @param id defines the material's Id
      * @return the material or null if none found.
-     * @deprecated Please use getMaterialById instead
-     */
-    Scene.prototype.getMaterialByID = function (id) {
-        return this.getMaterialById(id);
-    };
-    /**
-     * get a material using its id
-     * @param id defines the material's Id
-     * @return the material or null if none found.
      */
     Scene.prototype.getMaterialById = function (id) {
         for (var index = 0; index < this.materials.length; index++) {
@@ -46442,15 +48575,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a the last added material using a given id
-     * @param id defines the material's Id
-     * @return the last material with the given id or null if none found.
-     * @deprecated Please use getLastMaterialById instead
-     */
-    Scene.prototype.getLastMaterialByID = function (id) {
-        return this.getLastMaterialById(id);
     };
     /**
      * Gets a the last added material using a given id
@@ -46482,15 +48606,6 @@ var Scene = /** @class */ (function (_super) {
      * Get a texture using its unique id
      * @param uniqueId defines the texture's unique id
      * @return the texture or null if none found.
-     * @deprecated Please use getTextureByUniqueId instead
-     */
-    Scene.prototype.getTextureByUniqueID = function (uniqueId) {
-        return this.getTextureByUniqueId(uniqueId);
-    };
-    /**
-     * Get a texture using its unique id
-     * @param uniqueId defines the texture's unique id
-     * @return the texture or null if none found.
      */
     Scene.prototype.getTextureByUniqueId = function (uniqueId) {
         for (var index = 0; index < this.textures.length; index++) {
@@ -46501,13 +48616,17 @@ var Scene = /** @class */ (function (_super) {
         return null;
     };
     /**
-     * Gets a camera using its Id
-     * @param id defines the Id to look for
-     * @returns the camera or null if not found
-     * @deprecated Please use getCameraById instead
+     * Gets a texture using its name
+     * @param name defines the texture's name
+     * @return the texture or null if none found.
      */
-    Scene.prototype.getCameraByID = function (id) {
-        return this.getCameraById(id);
+    Scene.prototype.getTextureByName = function (name) {
+        for (var index = 0; index < this.textures.length; index++) {
+            if (this.textures[index].name === name) {
+                return this.textures[index];
+            }
+        }
+        return null;
     };
     /**
      * Gets a camera using its Id
@@ -46521,15 +48640,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a camera using its unique Id
-     * @param uniqueId defines the unique Id to look for
-     * @returns the camera or null if not found
-     * @deprecated Please use getCameraByUniqueId instead
-     */
-    Scene.prototype.getCameraByUniqueID = function (uniqueId) {
-        return this.getCameraByUniqueId(uniqueId);
     };
     /**
      * Gets a camera using its unique Id
@@ -46556,15 +48666,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a bone using its Id
-     * @param id defines the bone's Id
-     * @return the bone or null if not found
-     * @deprecated Please use getBoneById instead
-     */
-    Scene.prototype.getBoneByID = function (id) {
-        return this.getBoneById(id);
     };
     /**
      * Gets a bone using its Id
@@ -46615,15 +48716,6 @@ var Scene = /** @class */ (function (_super) {
      * Gets a light node using its Id
      * @param id defines the light's Id
      * @return the light or null if none found.
-     * @deprecated Please use getLightById instead
-     */
-    Scene.prototype.getLightByID = function (id) {
-        return this.getLightById(id);
-    };
-    /**
-     * Gets a light node using its Id
-     * @param id defines the light's Id
-     * @return the light or null if none found.
      */
     Scene.prototype.getLightById = function (id) {
         for (var index = 0; index < this.lights.length; index++) {
@@ -46632,15 +48724,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a light node using its scene-generated unique Id
-     * @param uniqueId defines the light's unique Id
-     * @return the light or null if none found.
-     * @deprecated Please use getLightByUniqueId instead
-     */
-    Scene.prototype.getLightByUniqueID = function (uniqueId) {
-        return this.getLightByUniqueId(uniqueId);
     };
     /**
      * Gets a light node using its scene-generated unique Id
@@ -46659,15 +48742,6 @@ var Scene = /** @class */ (function (_super) {
      * Gets a particle system by Id
      * @param id defines the particle system Id
      * @return the corresponding system or null if none found
-     * @deprecated Please use getParticleSystemById instead
-     */
-    Scene.prototype.getParticleSystemByID = function (id) {
-        return this.getParticleSystemById(id);
-    };
-    /**
-     * Gets a particle system by Id
-     * @param id defines the particle system Id
-     * @return the corresponding system or null if none found
      */
     Scene.prototype.getParticleSystemById = function (id) {
         for (var index = 0; index < this.particleSystems.length; index++) {
@@ -46676,15 +48750,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a geometry using its Id
-     * @param id defines the geometry's Id
-     * @return the geometry or null if none found.
-     * @deprecated Please use getGeometryById instead
-     */
-    Scene.prototype.getGeometryByID = function (id) {
-        return this.getGeometryById(id);
     };
     /**
      * Gets a geometry using its Id
@@ -46773,15 +48838,6 @@ var Scene = /** @class */ (function (_super) {
      * Gets the first added mesh found of a given Id
      * @param id defines the Id to search for
      * @return the mesh found or null if not found at all
-     * @deprecated Please use getMeshById instead
-     */
-    Scene.prototype.getMeshByID = function (id) {
-        return this.getMeshById(id);
-    };
-    /**
-     * Gets the first added mesh found of a given Id
-     * @param id defines the Id to search for
-     * @return the mesh found or null if not found at all
      */
     Scene.prototype.getMeshById = function (id) {
         for (var index = 0; index < this.meshes.length; index++) {
@@ -46795,29 +48851,11 @@ var Scene = /** @class */ (function (_super) {
      * Gets a list of meshes using their Id
      * @param id defines the Id to search for
      * @returns a list of meshes
-     * @deprecated Please use getMeshesById instead
-     */
-    Scene.prototype.getMeshesByID = function (id) {
-        return this.getMeshesById(id);
-    };
-    /**
-     * Gets a list of meshes using their Id
-     * @param id defines the Id to search for
-     * @returns a list of meshes
      */
     Scene.prototype.getMeshesById = function (id) {
         return this.meshes.filter(function (m) {
             return m.id === id;
         });
-    };
-    /**
-     * Gets the first added transform node found of a given Id
-     * @param id defines the Id to search for
-     * @return the found transform node or null if not found at all.
-     * @deprecated Please use getTransformNodeById instead
-     */
-    Scene.prototype.getTransformNodeByID = function (id) {
-        return this.getTransformNodeById(id);
     };
     /**
      * Gets the first added transform node found of a given Id
@@ -46836,15 +48874,6 @@ var Scene = /** @class */ (function (_super) {
      * Gets a transform node with its auto-generated unique Id
      * @param uniqueId efines the unique Id to search for
      * @return the found transform node or null if not found at all.
-     * @deprecated Please use getTransformNodeByUniqueId instead
-     */
-    Scene.prototype.getTransformNodeByUniqueID = function (uniqueId) {
-        return this.getTransformNodeByUniqueId(uniqueId);
-    };
-    /**
-     * Gets a transform node with its auto-generated unique Id
-     * @param uniqueId efines the unique Id to search for
-     * @return the found transform node or null if not found at all.
      */
     Scene.prototype.getTransformNodeByUniqueId = function (uniqueId) {
         for (var index = 0; index < this.transformNodes.length; index++) {
@@ -46858,29 +48887,11 @@ var Scene = /** @class */ (function (_super) {
      * Gets a list of transform nodes using their Id
      * @param id defines the Id to search for
      * @returns a list of transform nodes
-     * @deprecated Please use getTransformNodesById instead
-     */
-    Scene.prototype.getTransformNodesByID = function (id) {
-        return this.getTransformNodesById(id);
-    };
-    /**
-     * Gets a list of transform nodes using their Id
-     * @param id defines the Id to search for
-     * @returns a list of transform nodes
      */
     Scene.prototype.getTransformNodesById = function (id) {
         return this.transformNodes.filter(function (m) {
             return m.id === id;
         });
-    };
-    /**
-     * Gets a mesh with its auto-generated unique Id
-     * @param uniqueId defines the unique Id to search for
-     * @return the found mesh or null if not found at all.
-     * @deprecated Please use getMeshByUniqueId instead
-     */
-    Scene.prototype.getMeshByUniqueID = function (uniqueId) {
-        return this.getMeshByUniqueId(uniqueId);
     };
     /**
      * Gets a mesh with its auto-generated unique Id
@@ -46899,15 +48910,6 @@ var Scene = /** @class */ (function (_super) {
      * Gets a the last added mesh using a given Id
      * @param id defines the Id to search for
      * @return the found mesh or null if not found at all.
-     * @deprecated Please use getLastMeshById instead
-     */
-    Scene.prototype.getLastMeshByID = function (id) {
-        return this.getLastMeshById(id);
-    };
-    /**
-     * Gets a the last added mesh using a given Id
-     * @param id defines the Id to search for
-     * @return the found mesh or null if not found at all.
      */
     Scene.prototype.getLastMeshById = function (id) {
         for (var index = this.meshes.length - 1; index >= 0; index--) {
@@ -46916,15 +48918,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a the last added node (Mesh, Camera, Light) using a given Id
-     * @param id defines the Id to search for
-     * @return the found node or null if not found at all
-     * @deprecated Please use getLastEntryById instead
-     */
-    Scene.prototype.getLastEntryByID = function (id) {
-        return this.getLastEntryById(id);
     };
     /**
      * Gets a the last added node (Mesh, Camera, Light) using a given Id
@@ -46954,15 +48947,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a node (Mesh, Camera, Light) using a given Id
-     * @param id defines the Id to search for
-     * @return the found node or null if not found at all
-     * @deprecated Please use getNodeById instead
-     */
-    Scene.prototype.getNodeByID = function (id) {
-        return this.getNodeById(id);
     };
     /**
      * Gets a node (Mesh, Camera, Light) using a given Id
@@ -47045,15 +49029,6 @@ var Scene = /** @class */ (function (_super) {
             }
         }
         return null;
-    };
-    /**
-     * Gets a skeleton using a given Id (if many are found, this function will pick the last one)
-     * @param id defines the Id to search for
-     * @return the found skeleton or null if not found at all.
-     * @deprecated Please use getLastSkeletonById instead
-     */
-    Scene.prototype.getLastSkeletonByID = function (id) {
-        return this.getLastSkeletonById(id);
     };
     /**
      * Gets a skeleton using a given Id (if many are found, this function will pick the last one)
@@ -47565,6 +49540,7 @@ var Scene = /** @class */ (function (_super) {
     };
     /** @hidden */
     Scene.prototype._renderForCamera = function (camera, rigParent, bindFrameBuffer) {
+        var _a, _b, _c;
         if (bindFrameBuffer === void 0) { bindFrameBuffer = true; }
         if (camera && camera._skipRendering) {
             return;
@@ -47606,9 +49582,12 @@ var Scene = /** @class */ (function (_super) {
         if (rigParent && rigParent.customRenderTargets && rigParent.customRenderTargets.length > 0) {
             this._renderTargets.concatWithNoDuplicate(rigParent.customRenderTargets);
         }
+        if (this.environmentTexture && this.environmentTexture.isRenderTarget) {
+            this._renderTargets.pushNoDuplicate(this.environmentTexture);
+        }
         // Collects render targets from external components.
-        for (var _i = 0, _a = this._gatherActiveCameraRenderTargetsStage; _i < _a.length; _i++) {
-            var step = _a[_i];
+        for (var _i = 0, _d = this._gatherActiveCameraRenderTargetsStage; _i < _d.length; _i++) {
+            var step = _d[_i];
             step.action(this._renderTargets);
         }
         var needRebind = false;
@@ -47628,12 +49607,13 @@ var Scene = /** @class */ (function (_super) {
                 Tools.EndPerformanceCounter("Render targets", this._renderTargets.length > 0);
                 this._renderId++;
             }
-            for (var _b = 0, _c = this._cameraDrawRenderTargetStage; _b < _c.length; _b++) {
-                var step = _c[_b];
+            for (var _e = 0, _f = this._cameraDrawRenderTargetStage; _e < _f.length; _e++) {
+                var step = _f[_e];
                 needRebind = step.action(this.activeCamera) || needRebind;
             }
             this._intermediateRendering = false;
         }
+        this._engine.currentRenderPassId = (_c = (_b = (_a = camera.outputRenderTarget) === null || _a === void 0 ? void 0 : _a.renderPassId) !== null && _b !== void 0 ? _b : camera.renderPassId) !== null && _c !== void 0 ? _c : 0;
         // Restore framebuffer after rendering to targets
         if (needRebind && !this.prePass) {
             this._bindFrameBuffer(this._activeCamera, false);
@@ -47644,8 +49624,8 @@ var Scene = /** @class */ (function (_super) {
             this.postProcessManager._prepareFrame();
         }
         // Before Camera Draw
-        for (var _d = 0, _e = this._beforeCameraDrawStage; _d < _e.length; _d++) {
-            var step = _e[_d];
+        for (var _g = 0, _h = this._beforeCameraDrawStage; _g < _h.length; _g++) {
+            var step = _h[_g];
             step.action(this.activeCamera);
         }
         // Render
@@ -47656,8 +49636,8 @@ var Scene = /** @class */ (function (_super) {
         this._renderingManager.render(null, null, true, true);
         this.onAfterDrawPhaseObservable.notifyObservers(this);
         // After Camera Draw
-        for (var _f = 0, _g = this._afterCameraDrawStage; _f < _g.length; _f++) {
-            var step = _g[_f];
+        for (var _j = 0, _k = this._afterCameraDrawStage; _j < _k.length; _j++) {
+            var step = _k[_j];
             step.action(this.activeCamera);
         }
         // Finalize frame
@@ -47799,12 +49779,24 @@ var Scene = /** @class */ (function (_super) {
         }
     };
     /**
+     * Resets the draw wrappers cache of all meshes
+     */
+    Scene.prototype.resetDrawCache = function () {
+        if (!this.meshes) {
+            return;
+        }
+        for (var _i = 0, _a = this.meshes; _i < _a.length; _i++) {
+            var mesh = _a[_i];
+            mesh.resetDrawCache();
+        }
+    };
+    /**
      * Render the scene
      * @param updateCameras defines a boolean indicating if cameras must update according to their inputs (true by default)
      * @param ignoreAnimations defines a boolean indicating if animations should not be executed (false by default)
      */
     Scene.prototype.render = function (updateCameras, ignoreAnimations) {
-        var _a, _b;
+        var _a, _b, _c;
         if (updateCameras === void 0) { updateCameras = true; }
         if (ignoreAnimations === void 0) { ignoreAnimations = false; }
         if (this.isDisposed) {
@@ -47837,8 +49829,8 @@ var Scene = /** @class */ (function (_super) {
             this.animate();
         }
         // Before camera update steps
-        for (var _i = 0, _c = this._beforeCameraUpdateStage; _i < _c.length; _i++) {
-            var step = _c[_i];
+        for (var _i = 0, _d = this._beforeCameraUpdateStage; _i < _d.length; _i++) {
+            var step = _d[_i];
             step.action();
         }
         // Update Cameras
@@ -47893,21 +49885,22 @@ var Scene = /** @class */ (function (_super) {
             this._intermediateRendering = false;
             this._renderId++;
         }
+        this._engine.currentRenderPassId = (_c = currentActiveCamera === null || currentActiveCamera === void 0 ? void 0 : currentActiveCamera.renderPassId) !== null && _c !== void 0 ? _c : 0;
         // Restore back buffer
         this.activeCamera = currentActiveCamera;
         if (this._activeCamera && this._activeCamera.cameraRigMode !== 22 && !this.prePass) {
             this._bindFrameBuffer(this._activeCamera, false);
         }
         this.onAfterRenderTargetsRenderObservable.notifyObservers(this);
-        for (var _d = 0, _e = this._beforeClearStage; _d < _e.length; _d++) {
-            var step = _e[_d];
+        for (var _e = 0, _f = this._beforeClearStage; _e < _f.length; _e++) {
+            var step = _f[_e];
             step.action();
         }
         // Clear
         this._clearFrameBuffer(this.activeCamera);
         // Collects render targets from external components.
-        for (var _f = 0, _g = this._gatherRenderTargetsStage; _f < _g.length; _f++) {
-            var step = _g[_f];
+        for (var _g = 0, _h = this._gatherRenderTargetsStage; _g < _h.length; _g++) {
+            var step = _h[_g];
             step.action(this._renderTargets);
         }
         // Multi-cameras?
@@ -47925,8 +49918,8 @@ var Scene = /** @class */ (function (_super) {
         // Intersection checks
         this._checkIntersections();
         // Executes the after render stage actions.
-        for (var _h = 0, _j = this._afterRenderStage; _h < _j.length; _h++) {
-            var step = _j[_h];
+        for (var _j = 0, _k = this._afterRenderStage; _j < _k.length; _j++) {
+            var step = _k[_j];
             step.action();
         }
         // After render
@@ -48184,13 +50177,7 @@ var Scene = /** @class */ (function (_super) {
             var mesh = this.meshes[meshIndex];
             var geometry = mesh.geometry;
             if (geometry) {
-                geometry._indices = [];
-                for (var vbName in geometry._vertexBuffers) {
-                    if (!geometry._vertexBuffers.hasOwnProperty(vbName)) {
-                        continue;
-                    }
-                    geometry._vertexBuffers[vbName]._buffer._data = null;
-                }
+                geometry.clearCachedData();
             }
         }
     };
@@ -48244,7 +50231,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns a Ray
      */
     Scene.prototype.createPickingRay = function (x, y, world, camera, cameraViewSpace) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /**
      * Creates a ray that can be used to pick in the scene
@@ -48257,7 +50244,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns the current scene
      */
     Scene.prototype.createPickingRayToRef = function (x, y, world, result, camera, cameraViewSpace) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /**
      * Creates a ray that can be used to pick in the scene
@@ -48267,7 +50254,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns a Ray
      */
     Scene.prototype.createPickingRayInCameraSpace = function (x, y, camera) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /**
      * Creates a ray that can be used to pick in the scene
@@ -48278,7 +50265,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns the current scene
      */
     Scene.prototype.createPickingRayInCameraSpaceToRef = function (x, y, result, camera) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /** Launch a ray to try to pick a mesh in the scene
      * @param x position on screen
@@ -48317,7 +50304,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns a PickingInfo
      */
     Scene.prototype.pickWithRay = function (ray, predicate, fastCheck, trianglePredicate) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /**
      * Launch a ray to try to pick a mesh in the scene
@@ -48329,7 +50316,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns an array of PickingInfo
      */
     Scene.prototype.multiPick = function (x, y, predicate, camera, trianglePredicate) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /**
      * Launch a ray to try to pick a mesh in the scene
@@ -48339,7 +50326,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns an array of PickingInfo
      */
     Scene.prototype.multiPickWithRay = function (ray, predicate, trianglePredicate) {
-        throw _DevTools.WarnImport("Ray");
+        throw _WarnImport("Ray");
     };
     /**
      * Force the value of meshUnderPointer
@@ -48530,7 +50517,7 @@ var Scene = /** @class */ (function (_super) {
     /** @hidden */
     Scene.prototype._loadFile = function (fileOrUrl, onSuccess, onProgress, useOfflineSupport, useArrayBuffer, onError, onOpened) {
         var _this = this;
-        var request = FileTools.LoadFile(fileOrUrl, onSuccess, onProgress, useOfflineSupport ? this.offlineProvider : undefined, useArrayBuffer, onError, onOpened);
+        var request = LoadFile(fileOrUrl, onSuccess, onProgress, useOfflineSupport ? this.offlineProvider : undefined, useArrayBuffer, onError, onOpened);
         this._activeRequests.push(request);
         request.onCompleteObservable.add(function (request) {
             _this._activeRequests.splice(_this._activeRequests.indexOf(request), 1);
@@ -48551,7 +50538,7 @@ var Scene = /** @class */ (function (_super) {
     /** @hidden */
     Scene.prototype._requestFile = function (url, onSuccess, onProgress, useOfflineSupport, useArrayBuffer, onError, onOpened) {
         var _this = this;
-        var request = FileTools.RequestFile(url, onSuccess, onProgress, useOfflineSupport ? this.offlineProvider : undefined, useArrayBuffer, onError, onOpened);
+        var request = RequestFile(url, onSuccess, onProgress, useOfflineSupport ? this.offlineProvider : undefined, useArrayBuffer, onError, onOpened);
         this._activeRequests.push(request);
         request.onCompleteObservable.add(function (request) {
             _this._activeRequests.splice(_this._activeRequests.indexOf(request), 1);
@@ -48572,7 +50559,7 @@ var Scene = /** @class */ (function (_super) {
     /** @hidden */
     Scene.prototype._readFile = function (file, onSuccess, onProgress, useArrayBuffer, onError) {
         var _this = this;
-        var request = FileTools.ReadFile(file, onSuccess, onProgress, useArrayBuffer, onError);
+        var request = ReadFile(file, onSuccess, onProgress, useArrayBuffer, onError);
         this._activeRequests.push(request);
         request.onCompleteObservable.add(function (request) {
             _this._activeRequests.splice(_this._activeRequests.indexOf(request), 1);
@@ -48595,7 +50582,7 @@ var Scene = /** @class */ (function (_super) {
      * @returns the perf collector belonging to the scene.
      */
     Scene.prototype.getPerfCollector = function () {
-        throw _DevTools.WarnImport("performanceViewerSceneExtension");
+        throw _WarnImport("performanceViewerSceneExtension");
     };
     /** The fog is deactivated */
     Scene.FOGMODE_NONE = 0;
@@ -48617,6 +50604,7 @@ var Scene = /** @class */ (function (_super) {
     Scene.MaxDeltaTime = 1000.0;
     return Scene;
 }(AbstractScene));
+_injectLTSScene(Scene);
 
 /**
  * Base class of all the lights in Babylon. It groups all the generic information about lights.
@@ -48910,6 +50898,9 @@ var Light = /** @class */ (function (_super) {
         if (needUpdate) {
             this._uniformBuffer.update();
         }
+        else {
+            this._uniformBuffer.bindUniformBuffer();
+        }
     };
     /**
      * Returns the string "Light".
@@ -49055,11 +51046,12 @@ var Light = /** @class */ (function (_super) {
      */
     Light.prototype.serialize = function () {
         var serializationObject = SerializationHelper.Serialize(this);
+        serializationObject.uniqueId = this.uniqueId;
         // Type
         serializationObject.type = this.getTypeID();
         // Parent
         if (this.parent) {
-            serializationObject.parentId = this.parent.id;
+            serializationObject.parentId = this.parent.uniqueId;
         }
         // Inclusion / exclusions
         if (this.excludedMeshes.length > 0) {
@@ -49077,6 +51069,7 @@ var Light = /** @class */ (function (_super) {
         // Animations
         SerializationHelper.AppendSerializedAnimations(this, serializationObject);
         serializationObject.ranges = this.serializeAnimationRanges();
+        serializationObject.isEnabled = this.isEnabled();
         return serializationObject;
     };
     /**
@@ -49130,7 +51123,7 @@ var Light = /** @class */ (function (_super) {
         if (parsedLight.animations) {
             for (var animationIndex = 0; animationIndex < parsedLight.animations.length; animationIndex++) {
                 var parsedAnimation = parsedLight.animations[animationIndex];
-                var internalClass = _TypeStore.GetClass("BABYLON.Animation");
+                var internalClass = GetClass("BABYLON.Animation");
                 if (internalClass) {
                     light.animations.push(internalClass.Parse(parsedAnimation));
                 }
@@ -49139,6 +51132,10 @@ var Light = /** @class */ (function (_super) {
         }
         if (parsedLight.autoAnimate) {
             scene.beginAnimation(light, parsedLight.autoAnimateFrom, parsedLight.autoAnimateTo, parsedLight.autoAnimateLoop, parsedLight.autoAnimateSpeed || 1.0);
+        }
+        // Check if isEnabled is defined to be back compatible with prior serialized versions.
+        if (parsedLight.isEnabled !== undefined) {
+            light.setEnabled(parsedLight.isEnabled);
         }
         return light;
     };
@@ -49638,6 +51635,15 @@ var MaterialHelper = /** @class */ (function () {
         }
     };
     /**
+     * Prepares the defines for baked vertex animation
+     * @param mesh The mesh containing the geometry data we will draw
+     * @param defines The defines to update
+     */
+    MaterialHelper.PrepareDefinesForBakedVertexAnimation = function (mesh, defines) {
+        var manager = mesh.bakedVertexAnimationManager;
+        defines["BAKED_VERTEX_ANIMATION_TEXTURE"] = manager && manager.isEnabled ? true : false;
+    };
+    /**
      * Prepares the defines used in the shader depending on the attributes data available in the mesh
      * @param mesh The mesh containing the geometry data we will draw
      * @param defines The defines to update
@@ -49645,11 +51651,13 @@ var MaterialHelper = /** @class */ (function () {
      * @param useBones Precise whether bones should be used or not (override mesh info)
      * @param useMorphTargets Precise whether morph targets should be used or not (override mesh info)
      * @param useVertexAlpha Precise whether vertex alpha should be used or not (override mesh info)
+     * @param useBakedVertexAnimation Precise whether baked vertex animation should be used or not (override mesh info)
      * @returns false if defines are considered not dirty and have not been checked
      */
-    MaterialHelper.PrepareDefinesForAttributes = function (mesh, defines, useVertexColor, useBones, useMorphTargets, useVertexAlpha) {
+    MaterialHelper.PrepareDefinesForAttributes = function (mesh, defines, useVertexColor, useBones, useMorphTargets, useVertexAlpha, useBakedVertexAnimation) {
         if (useMorphTargets === void 0) { useMorphTargets = false; }
         if (useVertexAlpha === void 0) { useVertexAlpha = true; }
+        if (useBakedVertexAnimation === void 0) { useBakedVertexAnimation = true; }
         if (!defines._areAttributesDirty && defines._needNormals === defines._normals && defines._needUVs === defines._uvs) {
             return false;
         }
@@ -49673,6 +51681,9 @@ var MaterialHelper = /** @class */ (function () {
         if (useMorphTargets) {
             this.PrepareDefinesForMorphTargets(mesh, defines);
         }
+        if (useBakedVertexAnimation) {
+            this.PrepareDefinesForBakedVertexAnimation(mesh, defines);
+        }
         return true;
     };
     /**
@@ -49687,6 +51698,21 @@ var MaterialHelper = /** @class */ (function () {
             if (defines.MULTIVIEW != previousMultiview) {
                 defines.markAsUnprocessed();
             }
+        }
+    };
+    /**
+     * Prepares the defines related to order independant transparency
+     * @param scene The scene we are intending to draw
+     * @param defines The defines to update
+     * @param needAlphaBlending Determines if the material needs alpha blending
+     */
+    MaterialHelper.PrepareDefinesForOIT = function (scene, defines, needAlphaBlending) {
+        var previousDefine = defines.ORDER_INDEPENDENT_TRANSPARENCY;
+        var previousDefine16Bits = defines.ORDER_INDEPENDENT_TRANSPARENCY_16BITS;
+        defines.ORDER_INDEPENDENT_TRANSPARENCY = scene.useOrderIndependentTransparency && needAlphaBlending;
+        defines.ORDER_INDEPENDENT_TRANSPARENCY_16BITS = !scene.getEngine().getCaps().textureFloatLinearFiltering;
+        if (previousDefine !== defines.ORDER_INDEPENDENT_TRANSPARENCY || previousDefine16Bits !== defines.ORDER_INDEPENDENT_TRANSPARENCY_16BITS) {
+            defines.markAsUnprocessed();
         }
     };
     /**
@@ -49723,8 +51749,8 @@ var MaterialHelper = /** @class */ (function () {
             },
             {
                 type: 7,
-                define: "PREPASS_ALBEDO",
-                index: "PREPASS_ALBEDO_INDEX",
+                define: "PREPASS_ALBEDO_SQRT",
+                index: "PREPASS_ALBEDO_SQRT_INDEX",
             },
             {
                 type: 5,
@@ -49975,6 +52001,12 @@ var MaterialHelper = /** @class */ (function () {
         if (defines["NUM_MORPH_INFLUENCERS"]) {
             uniformsList.push("morphTargetInfluences");
         }
+        if (defines["BAKED_VERTEX_ANIMATION_TEXTURE"]) {
+            uniformsList.push("bakedVertexAnimationSettings");
+            uniformsList.push("bakedVertexAnimationTextureSizeInverted");
+            uniformsList.push("bakedVertexAnimationTime");
+            samplersList.push("bakedVertexAnimationTexture");
+        }
     };
     /**
      * This helps decreasing rank by rank the shadow quality (0 being the highest rank and quality)
@@ -50061,6 +52093,18 @@ var MaterialHelper = /** @class */ (function () {
                     Logger.Error("Cannot add more vertex attributes for mesh " + mesh.name);
                 }
             }
+        }
+    };
+    /**
+     * Prepares the list of attributes required for baked vertex animations according to the effect defines.
+     * @param attribs The current list of supported attribs
+     * @param mesh The mesh to prepare the morph targets attributes for
+     * @param defines The current Defines of the effect
+     */
+    MaterialHelper.PrepareAttributesForBakedVertexAnimation = function (attribs, mesh, defines) {
+        var enabled = defines["BAKED_VERTEX_ANIMATION_TEXTURE"] && defines["INSTANCES"];
+        if (enabled) {
+            attribs.push("bakedVertexAnimationSettingsInstanced");
         }
     };
     /**
@@ -50227,8 +52271,12 @@ var MaterialHelper = /** @class */ (function () {
      * @param scene The scene we are willing to render with logarithmic scale for
      */
     MaterialHelper.BindLogDepth = function (defines, effect, scene) {
-        if (defines["LOGARITHMICDEPTH"]) {
-            effect.setFloat("logarithmicDepthConstant", 2.0 / (Math.log(scene.activeCamera.maxZ + 1.0) / Math.LN2));
+        if (!defines || defines["LOGARITHMICDEPTH"]) {
+            var camera = scene.activeCamera;
+            if (camera.mode === Camera.ORTHOGRAPHIC_CAMERA) {
+                Logger.Error("Logarithmic depth is not compatible with orthographic cameras!", 20);
+            }
+            effect.setFloat("logarithmicDepthConstant", 2.0 / (Math.log(camera.maxZ + 1.0) / Math.LN2));
         }
     };
     /**
@@ -50923,6 +52971,10 @@ var Material = /** @class */ (function () {
     Material.prototype._getDrawWrapper = function () {
         return this._drawWrapper;
     };
+    /** @hidden */
+    Material.prototype._setDrawWrapper = function (drawWrapper) {
+        this._drawWrapper = drawWrapper;
+    };
     /**
      * Returns a string representation of the current material
      * @param fullDetails defines a boolean indicating which levels of logging is desired
@@ -51182,8 +53234,8 @@ var Material = /** @class */ (function () {
         if (this._needToBindSceneUbo) {
             if (effect) {
                 this._needToBindSceneUbo = false;
-                this._scene.finalizeSceneUbo();
                 MaterialHelper.BindSceneUniformBuffer(effect, this.getScene().getSceneUniformBuffer());
+                this._scene.finalizeSceneUbo();
             }
         }
         if (mesh) {
@@ -51300,8 +53352,8 @@ var Material = /** @class */ (function () {
                 var allDone = true, lastError = null;
                 if (mesh.subMeshes) {
                     var tempSubMesh = new SubMesh(0, 0, 0, 0, 0, mesh, undefined, false, false);
-                    if (tempSubMesh._materialDefines) {
-                        tempSubMesh._materialDefines._renderId = -1;
+                    if (tempSubMesh.materialDefines) {
+                        tempSubMesh.materialDefines._renderId = -1;
                     }
                     if (!_this.isReadyForSubMesh(mesh, tempSubMesh, localOptions.useInstances)) {
                         if (tempSubMesh.effect && tempSubMesh.effect.getCompilationError() && tempSubMesh.effect.allFallbacksProcessed()) {
@@ -51409,10 +53461,15 @@ var Material = /** @class */ (function () {
                 if (subMesh.getMaterial() !== this) {
                     continue;
                 }
-                if (!subMesh._materialDefines) {
-                    continue;
+                for (var _c = 0, _d = subMesh._drawWrappers; _c < _d.length; _c++) {
+                    var drawWrapper = _d[_c];
+                    if (!drawWrapper || !drawWrapper.defines || !drawWrapper.defines.markAllAsDirty) {
+                        continue;
+                    }
+                    if (this._materialContext === drawWrapper.materialContext) {
+                        func(drawWrapper.defines);
+                    }
                 }
-                func(subMesh._materialDefines);
             }
         }
     };
@@ -51568,9 +53625,9 @@ var Material = /** @class */ (function () {
             if (this._storeEffectOnSubMeshes) {
                 for (var _i = 0, _a = mesh.subMeshes; _i < _a.length; _i++) {
                     var subMesh = _a[_i];
-                    geometry._releaseVertexArrayObject(subMesh._materialEffect);
-                    if (forceDisposeEffect && subMesh._materialEffect) {
-                        subMesh._materialEffect.dispose();
+                    geometry._releaseVertexArrayObject(subMesh.effect);
+                    if (forceDisposeEffect && subMesh.effect) {
+                        subMesh.effect.dispose();
                     }
                 }
             }
@@ -52043,7 +54100,7 @@ var MultiMaterial = /** @class */ (function (_super) {
     };
     return MultiMaterial;
 }(Material));
-_TypeStore.RegisteredTypes["BABYLON.MultiMaterial"] = MultiMaterial;
+RegisterClass("BABYLON.MultiMaterial", MultiMaterial);
 
 /**
  * Class used to represent a specific level of detail of a mesh
@@ -52066,6 +54123,29 @@ var MeshLODLevel = /** @class */ (function () {
     return MeshLODLevel;
 }());
 
+/** @hidden */
+var _injectLTSMesh = function (Mesh) {
+    Mesh.prototype.setMaterialByID = function (id) {
+        return this.setMaterialById(id);
+    };
+    Mesh.CreateDisc = Mesh.CreateDisc || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateBox = Mesh.CreateBox || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateSphere = Mesh.CreateSphere || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateCylinder = Mesh.CreateCylinder || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateTorusKnot = Mesh.CreateTorusKnot || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateTorus = Mesh.CreateTorus || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreatePlane = Mesh.CreatePlane || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateGround = Mesh.CreateGround || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateTiledGround = Mesh.CreateTiledGround || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateGroundFromHeightMap = Mesh.CreateGroundFromHeightMap || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateTube = Mesh.CreateTube || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreatePolyhedron = Mesh.CreatePolyhedron || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateIcoSphere = Mesh.CreateIcoSphere || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateDecal = Mesh.CreateDecal || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.CreateCapsule = Mesh.CreateCapsule || (function () { throw _WarnImport("MeshBuilder"); });
+    Mesh.ExtendToGoldberg = Mesh.ExtendToGoldberg || (function () { throw _WarnImport("MeshBuilder"); });
+};
+
 /**
  * @hidden
  **/
@@ -52081,6 +54161,7 @@ var _InstanceDataStorage = /** @class */ (function () {
     function _InstanceDataStorage() {
         this.visibleInstances = {};
         this.batchCache = new _InstancesBatch();
+        this.batchCacheReplacementModeInFrozenMode = new _InstancesBatch();
         this.instancesBufferSize = 32 * 16 * 4; // let's start with a maximum of 32 instances
     }
     return _InstanceDataStorage;
@@ -53046,16 +55127,22 @@ var Mesh = /** @class */ (function (_super) {
             }
         }
         // Shadows
+        var currentRenderPassId = engine.currentRenderPassId;
         for (var _h = 0, _j = this.lightSources; _h < _j.length; _h++) {
             var light = _j[_h];
             var generator = light.getShadowGenerator();
             if (generator && (!((_a = generator.getShadowMap()) === null || _a === void 0 ? void 0 : _a.renderList) || (((_b = generator.getShadowMap()) === null || _b === void 0 ? void 0 : _b.renderList) && ((_d = (_c = generator.getShadowMap()) === null || _c === void 0 ? void 0 : _c.renderList) === null || _d === void 0 ? void 0 : _d.indexOf(this)) !== -1))) {
+                if (generator.getShadowMap()) {
+                    engine.currentRenderPassId = generator.getShadowMap().renderPassId;
+                }
                 for (var _k = 0, _l = this.subMeshes; _k < _l.length; _k++) {
                     var subMesh = _l[_k];
                     if (!generator.isReady(subMesh, hardwareInstancedRendering, (_f = (_e = subMesh.getMaterial()) === null || _e === void 0 ? void 0 : _e.needAlphaBlendingForMesh(this)) !== null && _f !== void 0 ? _f : false)) {
+                        engine.currentRenderPassId = currentRenderPassId;
                         return false;
                     }
                 }
+                engine.currentRenderPassId = currentRenderPassId;
             }
         }
         // LOD
@@ -53552,8 +55639,15 @@ var Mesh = /** @class */ (function (_super) {
     /** @hidden */
     Mesh.prototype._getInstancesRenderList = function (subMeshId, isReplacementMode) {
         if (isReplacementMode === void 0) { isReplacementMode = false; }
-        if (this._instanceDataStorage.isFrozen && this._instanceDataStorage.previousBatch) {
-            return this._instanceDataStorage.previousBatch;
+        if (this._instanceDataStorage.isFrozen) {
+            if (isReplacementMode) {
+                this._instanceDataStorage.batchCacheReplacementModeInFrozenMode.hardwareInstancedRendering[subMeshId] = false;
+                this._instanceDataStorage.batchCacheReplacementModeInFrozenMode.renderSelf[subMeshId] = true;
+                return this._instanceDataStorage.batchCacheReplacementModeInFrozenMode;
+            }
+            if (this._instanceDataStorage.previousBatch) {
+                return this._instanceDataStorage.previousBatch;
+            }
         }
         var scene = this.getScene();
         var isInIntermediateRendering = scene._isInIntermediateRendering();
@@ -53703,6 +55797,9 @@ var Mesh = /** @class */ (function (_super) {
         // Stats
         this.getScene()._activeIndices.addCount(subMesh.indexCount * instancesCount, false);
         // Draw
+        if (engine._currentDrawContext) {
+            engine._currentDrawContext.useInstancing = true;
+        }
         this._bind(subMesh, effect, fillMode);
         this._draw(subMesh, fillMode, instancesCount);
         // Write current matrices as previous matrices in case of manual update
@@ -53725,6 +55822,9 @@ var Mesh = /** @class */ (function (_super) {
         var instancesCount = (_b = (_a = this._thinInstanceDataStorage) === null || _a === void 0 ? void 0 : _a.instancesCount) !== null && _b !== void 0 ? _b : 0;
         this.getScene()._activeIndices.addCount(subMesh.indexCount * instancesCount, false);
         // Draw
+        if (engine._currentDrawContext) {
+            engine._currentDrawContext.useInstancing = true;
+        }
         this._bind(subMesh, effect, fillMode);
         this._draw(subMesh, fillMode, instancesCount);
         // Write current matrices as previous matrices
@@ -53756,6 +55856,9 @@ var Mesh = /** @class */ (function (_super) {
             this._renderWithInstances(subMesh, fillMode, batch, effect, engine);
         }
         else {
+            if (engine._currentDrawContext) {
+                engine._currentDrawContext.useInstancing = false;
+            }
             var instanceCount = 0;
             if (batch.renderSelf[subMesh._id]) {
                 // Draw
@@ -53860,10 +55963,9 @@ var Mesh = /** @class */ (function (_super) {
             return this;
         }
         var engine = scene.getEngine();
-        var useReverseDepthBuffer = engine.useReverseDepthBuffer;
         var oldCameraMaxZ = 0;
         var oldCamera = null;
-        if (!useReverseDepthBuffer && this.ignoreCameraMaxZ && scene.activeCamera && !scene._isInIntermediateRendering()) {
+        if (this.ignoreCameraMaxZ && scene.activeCamera && !scene._isInIntermediateRendering()) {
             oldCameraMaxZ = scene.activeCamera.maxZ;
             oldCamera = scene.activeCamera;
             scene.activeCamera.maxZ = 0;
@@ -54219,15 +56321,6 @@ var Mesh = /** @class */ (function (_super) {
      * Sets the mesh material by the material or multiMaterial `id` property
      * @param id is a string identifying the material or the multiMaterial
      * @returns the current mesh
-     * @deprecated Please use setMaterialById instead
-     */
-    Mesh.prototype.setMaterialByID = function (id) {
-        return this.setMaterialById(id);
-    };
-    /**
-     * Sets the mesh material by the material or multiMaterial `id` property
-     * @param id is a string identifying the material or the multiMaterial
-     * @returns the current mesh
      */
     Mesh.prototype.setMaterialById = function (id) {
         var materials = this.getScene().materials;
@@ -54554,7 +56647,7 @@ var Mesh = /** @class */ (function (_super) {
                 continue;
             }
             vbs[kind] = vertexBuffer;
-            data[kind] = vbs[kind].getData();
+            data[kind] = this.getVerticesData(kind);
             newdata[kind] = [];
         }
         // Save previous submeshes
@@ -54576,6 +56669,14 @@ var Mesh = /** @class */ (function (_super) {
         // Updating faces & normal
         var normals = [];
         var positions = newdata[VertexBuffer.PositionKind];
+        var useRightHandedSystem = this.getScene().useRightHandedSystem;
+        var flipNormalGeneration;
+        if (useRightHandedSystem) {
+            flipNormalGeneration = this.overrideMaterialSideOrientation === 1;
+        }
+        else {
+            flipNormalGeneration = this.overrideMaterialSideOrientation === 0;
+        }
         for (index = 0; index < totalIndices; index += 3) {
             indices[index] = index;
             indices[index + 1] = index + 1;
@@ -54586,6 +56687,9 @@ var Mesh = /** @class */ (function (_super) {
             var p1p2 = p1.subtract(p2);
             var p3p2 = p3.subtract(p2);
             var normal = Vector3.Normalize(Vector3.Cross(p1p2, p3p2));
+            if (flipNormalGeneration) {
+                normal.scaleInPlace(-1);
+            }
             // Store same normals for every vertex
             for (var localIndex = 0; localIndex < 3; localIndex++) {
                 normals.push(normal.x);
@@ -54907,11 +57011,11 @@ var Mesh = /** @class */ (function (_super) {
     // Instances
     /** @hidden */
     Mesh._instancedMeshFactory = function (name, mesh) {
-        throw _DevTools.WarnImport("InstancedMesh");
+        throw _WarnImport("InstancedMesh");
     };
     /** @hidden */
     Mesh._PhysicsImpostorParser = function (scene, physicObject, jsonObject) {
-        throw _DevTools.WarnImport("PhysicsImpostor");
+        throw _WarnImport("PhysicsImpostor");
     };
     /**
      * Creates a new InstancedMesh object from the mesh model.
@@ -55015,14 +57119,14 @@ var Mesh = /** @class */ (function (_super) {
         serializationObject.overrideMaterialSideOrientation = this.overrideMaterialSideOrientation;
         // Parent
         if (this.parent) {
-            serializationObject.parentId = this.parent.id;
+            serializationObject.parentId = this.parent.uniqueId;
         }
         // Geometry
         serializationObject.isUnIndexed = this.isUnIndexed;
         var geometry = this._geometry;
         if (geometry && this.subMeshes) {
-            var geometryId = geometry.id;
-            serializationObject.geometryId = geometryId;
+            serializationObject.geometryUniqueId = geometry.uniqueId;
+            serializationObject.geometryId = geometry.id;
             // SubMeshes
             serializationObject.subMeshes = [];
             for (var subIndex = 0; subIndex < this.subMeshes.length; subIndex++) {
@@ -55044,6 +57148,7 @@ var Mesh = /** @class */ (function (_super) {
         }
         else {
             this.material = null;
+            serializationObject.materialId = this._scene.defaultMaterial.id;
         }
         // Morph targets
         if (this.morphTargetManager) {
@@ -55087,7 +57192,7 @@ var Mesh = /** @class */ (function (_super) {
                 scaling: instance.scaling.asArray(),
             };
             if (instance.parent) {
-                serializationInstance.parentId = instance.parent.id;
+                serializationInstance.parentId = instance.parent.uniqueId;
             }
             if (instance.rotationQuaternion) {
                 serializationInstance.rotationQuaternion = instance.rotationQuaternion.asArray();
@@ -55366,7 +57471,7 @@ var Mesh = /** @class */ (function (_super) {
         if (parsedMesh.animations) {
             for (var animationIndex = 0; animationIndex < parsedMesh.animations.length; animationIndex++) {
                 var parsedAnimation = parsedMesh.animations[animationIndex];
-                var internalClass = _TypeStore.GetClass("BABYLON.Animation");
+                var internalClass = GetClass("BABYLON.Animation");
                 if (internalClass) {
                     mesh.animations.push(internalClass.Parse(parsedAnimation));
                 }
@@ -55457,7 +57562,7 @@ var Mesh = /** @class */ (function (_super) {
                 if (parsedInstance.animations) {
                     for (animationIndex = 0; animationIndex < parsedInstance.animations.length; animationIndex++) {
                         parsedAnimation = parsedInstance.animations[animationIndex];
-                        var internalClass = _TypeStore.GetClass("BABYLON.Animation");
+                        var internalClass = GetClass("BABYLON.Animation");
                         if (internalClass) {
                             instance.animations.push(internalClass.Parse(parsedAnimation));
                         }
@@ -55490,400 +57595,6 @@ var Mesh = /** @class */ (function (_super) {
             }
         }
         return mesh;
-    };
-    /**
-     * Creates a ribbon mesh. Please consider using the same method from the MeshBuilder class instead
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes
-     * @param name defines the name of the mesh to create
-     * @param pathArray is a required array of paths, what are each an array of successive Vector3. The pathArray parameter depicts the ribbon geometry.
-     * @param closeArray creates a seam between the first and the last paths of the path array (default is false)
-     * @param closePath creates a seam between the first and the last points of each path of the path array
-     * @param offset is taken in account only if the `pathArray` is containing a single path
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @param instance defines an instance of an existing Ribbon object to be updated with the passed `pathArray` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#ribbon)
-     * @returns a new Mesh
-     */
-    Mesh.CreateRibbon = function (name, pathArray, closeArray, closePath, offset, scene, updatable, sideOrientation, instance) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a plane polygonal mesh.  By default, this is a disc. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param radius sets the radius size (float) of the polygon (default 0.5)
-     * @param tessellation sets the number of polygon sides (positive integer, default 64). So a tessellation valued to 3 will build a triangle, to 4 a square, etc
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateDisc = function (name, radius, tessellation, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a box mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param size sets the size (float) of each box side (default 1)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateBox = function (name, size, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a sphere mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param segments sets the sphere number of horizontal stripes (positive integer, default 32)
-     * @param diameter sets the diameter size (float) of the sphere (default 1)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateSphere = function (name, segments, diameter, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a hemisphere mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param segments sets the sphere number of horizontal stripes (positive integer, default 32)
-     * @param diameter sets the diameter size (float) of the sphere (default 1)
-     * @param scene defines the hosting scene
-     * @returns a new Mesh
-     */
-    Mesh.CreateHemisphere = function (name, segments, diameter, scene) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a cylinder or a cone mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param height sets the height size (float) of the cylinder/cone (float, default 2)
-     * @param diameterTop set the top cap diameter (floats, default 1)
-     * @param diameterBottom set the bottom cap diameter (floats, default 1). This value can't be zero
-     * @param tessellation sets the number of cylinder sides (positive integer, default 24). Set it to 3 to get a prism for instance
-     * @param subdivisions sets the number of rings along the cylinder height (positive integer, default 1)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateCylinder = function (name, height, diameterTop, diameterBottom, tessellation, subdivisions, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    // Torus  (Code from SharpDX.org)
-    /**
-     * Creates a torus mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param diameter sets the diameter size (float) of the torus (default 1)
-     * @param thickness sets the diameter size of the tube of the torus (float, default 0.5)
-     * @param tessellation sets the number of torus sides (positive integer, default 16)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateTorus = function (name, diameter, thickness, tessellation, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a torus knot mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param radius sets the global radius size (float) of the torus knot (default 2)
-     * @param tube sets the diameter size of the tube of the torus (float, default 0.5)
-     * @param radialSegments sets the number of sides on each tube segments (positive integer, default 32)
-     * @param tubularSegments sets the number of tubes to decompose the knot into (positive integer, default 32)
-     * @param p the number of windings on X axis (positive integers, default 2)
-     * @param q the number of windings on Y axis (positive integers, default 3)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateTorusKnot = function (name, radius, tube, radialSegments, tubularSegments, p, q, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a line mesh. Please consider using the same method from the MeshBuilder class instead.
-     * @param name defines the name of the mesh to create
-     * @param points is an array successive Vector3
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param instance is an instance of an existing LineMesh object to be updated with the passed `points` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#lines-and-dashedlines).
-     * @returns a new Mesh
-     */
-    Mesh.CreateLines = function (name, points, scene, updatable, instance) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a dashed line mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param points is an array successive Vector3
-     * @param dashSize is the size of the dashes relatively the dash number (positive float, default 3)
-     * @param gapSize is the size of the gap between two successive dashes relatively the dash number (positive float, default 1)
-     * @param dashNb is the intended total number of dashes (positive integer, default 200)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param instance is an instance of an existing LineMesh object to be updated with the passed `points` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#lines-and-dashedlines)
-     * @returns a new Mesh
-     */
-    Mesh.CreateDashedLines = function (name, points, dashSize, gapSize, dashNb, scene, updatable, instance) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a polygon mesh.Please consider using the same method from the MeshBuilder class instead
-     * The polygon's shape will depend on the input parameters and is constructed parallel to a ground mesh.
-     * The parameter `shape` is a required array of successive Vector3 representing the corners of the polygon in th XoZ plane, that is y = 0 for all vectors.
-     * You can set the mesh side orientation with the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
-     * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created.
-     * Remember you can only change the shape positions, not their number when updating a polygon.
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#non-regular-polygon
-     * @param name defines the name of the mesh to create
-     * @param shape is a required array of successive Vector3 representing the corners of the polygon in th XoZ plane, that is y = 0 for all vectors
-     * @param scene defines the hosting scene
-     * @param holes is a required array of arrays of successive Vector3 used to defines holes in the polygon
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @param earcutInjection can be used to inject your own earcut reference
-     * @returns a new Mesh
-     */
-    Mesh.CreatePolygon = function (name, shape, scene, holes, updatable, sideOrientation, earcutInjection) {
-        if (earcutInjection === void 0) { earcutInjection = earcut; }
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates an extruded polygon mesh, with depth in the Y direction. Please consider using the same method from the MeshBuilder class instead.
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#extruded-non-regular-polygon
-     * @param name defines the name of the mesh to create
-     * @param shape is a required array of successive Vector3 representing the corners of the polygon in th XoZ plane, that is y = 0 for all vectors
-     * @param depth defines the height of extrusion
-     * @param scene defines the hosting scene
-     * @param holes is a required array of arrays of successive Vector3 used to defines holes in the polygon
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @param earcutInjection can be used to inject your own earcut reference
-     * @returns a new Mesh
-     */
-    Mesh.ExtrudePolygon = function (name, shape, depth, scene, holes, updatable, sideOrientation, earcutInjection) {
-        if (earcutInjection === void 0) { earcutInjection = earcut; }
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates an extruded shape mesh.
-     * The extrusion is a parametric shape. It has no predefined shape. Its final shape will depend on the input parameters. Please consider using the same method from the MeshBuilder class instead
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#extruded-shapes
-     * @param name defines the name of the mesh to create
-     * @param shape is a required array of successive Vector3. This array depicts the shape to be extruded in its local space : the shape must be designed in the xOy plane and will be extruded along the Z axis
-     * @param path is a required array of successive Vector3. This is the axis curve the shape is extruded along
-     * @param scale is the value to scale the shape
-     * @param rotation is the angle value to rotate the shape each step (each path point), from the former step (so rotation added each step) along the curve
-     * @param cap sets the way the extruded shape is capped. Possible values : Mesh.NO_CAP (default), Mesh.CAP_START, Mesh.CAP_END, Mesh.CAP_ALL
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @param instance is an instance of an existing ExtrudedShape object to be updated with the passed `shape`, `path`, `scale` or `rotation` parameters (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#extruded-shape)
-     * @returns a new Mesh
-     */
-    Mesh.ExtrudeShape = function (name, shape, path, scale, rotation, cap, scene, updatable, sideOrientation, instance) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates an custom extruded shape mesh.
-     * The custom extrusion is a parametric shape.
-     * It has no predefined shape. Its final shape will depend on the input parameters.
-     * Please consider using the same method from the MeshBuilder class instead
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#extruded-shapes
-     * @param name defines the name of the mesh to create
-     * @param shape is a required array of successive Vector3. This array depicts the shape to be extruded in its local space : the shape must be designed in the xOy plane and will be extruded along the Z axis
-     * @param path is a required array of successive Vector3. This is the axis curve the shape is extruded along
-     * @param scaleFunction is a custom Javascript function called on each path point
-     * @param rotationFunction is a custom Javascript function called on each path point
-     * @param ribbonCloseArray forces the extrusion underlying ribbon to close all the paths in its `pathArray`
-     * @param ribbonClosePath forces the extrusion underlying ribbon to close its `pathArray`
-     * @param cap sets the way the extruded shape is capped. Possible values : Mesh.NO_CAP (default), Mesh.CAP_START, Mesh.CAP_END, Mesh.CAP_ALL
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @param instance is an instance of an existing ExtrudedShape object to be updated with the passed `shape`, `path`, `scale` or `rotation` parameters (https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#extruded-shape)
-     * @returns a new Mesh
-     */
-    Mesh.ExtrudeShapeCustom = function (name, shape, path, scaleFunction, rotationFunction, ribbonCloseArray, ribbonClosePath, cap, scene, updatable, sideOrientation, instance) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates lathe mesh.
-     * The lathe is a shape with a symmetry axis : a 2D model shape is rotated around this axis to design the lathe.
-     * Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param shape is a required array of successive Vector3. This array depicts the shape to be rotated in its local space : the shape must be designed in the xOy plane and will be rotated around the Y axis. It's usually a 2D shape, so the Vector3 z coordinates are often set to zero
-     * @param radius is the radius value of the lathe
-     * @param tessellation is the side number of the lathe.
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreateLathe = function (name, shape, radius, tessellation, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a plane mesh. Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param size sets the size (float) of both sides of the plane at once (default 1)
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @returns a new Mesh
-     */
-    Mesh.CreatePlane = function (name, size, scene, updatable, sideOrientation) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a ground mesh.
-     * Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param width set the width of the ground
-     * @param height set the height of the ground
-     * @param subdivisions sets the number of subdivisions per side
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @returns a new Mesh
-     */
-    Mesh.CreateGround = function (name, width, height, subdivisions, scene, updatable) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a tiled ground mesh.
-     * Please consider using the same method from the MeshBuilder class instead
-     * @param name defines the name of the mesh to create
-     * @param xmin set the ground minimum X coordinate
-     * @param zmin set the ground minimum Y coordinate
-     * @param xmax set the ground maximum X coordinate
-     * @param zmax set the ground maximum Z coordinate
-     * @param subdivisions is an object `{w: positive integer, h: positive integer}` (default `{w: 6, h: 6}`). `w` and `h` are the numbers of subdivisions on the ground width and height. Each subdivision is called a tile
-     * @param precision is an object `{w: positive integer, h: positive integer}` (default `{w: 2, h: 2}`). `w` and `h` are the numbers of subdivisions on the ground width and height of each tile
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @returns a new Mesh
-     */
-    Mesh.CreateTiledGround = function (name, xmin, zmin, xmax, zmax, subdivisions, precision, scene, updatable) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a ground mesh from a height map.
-     * Please consider using the same method from the MeshBuilder class instead
-     * @see https://doc.babylonjs.com/babylon101/height_map
-     * @param name defines the name of the mesh to create
-     * @param url sets the URL of the height map image resource
-     * @param width set the ground width size
-     * @param height set the ground height size
-     * @param subdivisions sets the number of subdivision per side
-     * @param minHeight is the minimum altitude on the ground
-     * @param maxHeight is the maximum altitude on the ground
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param onReady  is a callback function that will be called  once the mesh is built (the height map download can last some time)
-     * @param alphaFilter will filter any data where the alpha channel is below this value, defaults 0 (all data visible)
-     * @returns a new Mesh
-     */
-    Mesh.CreateGroundFromHeightMap = function (name, url, width, height, subdivisions, minHeight, maxHeight, scene, updatable, onReady, alphaFilter) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a tube mesh.
-     * The tube is a parametric shape.
-     * It has no predefined shape. Its final shape will depend on the input parameters.
-     * Please consider using the same method from the MeshBuilder class instead
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes
-     * @param name defines the name of the mesh to create
-     * @param path is a required array of successive Vector3. It is the curve used as the axis of the tube
-     * @param radius sets the tube radius size
-     * @param tessellation is the number of sides on the tubular surface
-     * @param radiusFunction is a custom function. If it is not null, it overrides the parameter `radius`. This function is called on each point of the tube path and is passed the index `i` of the i-th point and the distance of this point from the first point of the path
-     * @param cap sets the way the extruded shape is capped. Possible values : Mesh.NO_CAP (default), Mesh.CAP_START, Mesh.CAP_END, Mesh.CAP_ALL
-     * @param scene defines the hosting scene
-     * @param updatable defines if the mesh must be flagged as updatable
-     * @param sideOrientation defines the mesh side orientation (https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation)
-     * @param instance is an instance of an existing Tube object to be updated with the passed `pathArray` parameter (https://doc.babylonjs.com/how_to/How_to_dynamically_morph_a_mesh#tube)
-     * @returns a new Mesh
-     */
-    Mesh.CreateTube = function (name, path, radius, tessellation, radiusFunction, cap, scene, updatable, sideOrientation, instance) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a polyhedron mesh.
-     * Please consider using the same method from the MeshBuilder class instead.
-     * * The parameter `type` (positive integer, max 14, default 0) sets the polyhedron type to build among the 15 embedded types. Please refer to the type sheet in the tutorial to choose the wanted type
-     * * The parameter `size` (positive float, default 1) sets the polygon size
-     * * You can overwrite the `size` on each dimension bu using the parameters `sizeX`, `sizeY` or `sizeZ` (positive floats, default to `size` value)
-     * * You can build other polyhedron types than the 15 embbeded ones by setting the parameter `custom` (`polyhedronObject`, default null). If you set the parameter `custom`, this overwrittes the parameter `type`
-     * * A `polyhedronObject` is a formatted javascript object. You'll find a full file with pre-set polyhedra here : https://github.com/BabylonJS/Extensions/tree/master/Polyhedron
-     * * You can set the color and the UV of each side of the polyhedron with the parameters `faceColors` (Color4, default `(1, 1, 1, 1)`) and faceUV (Vector4, default `(0, 0, 1, 1)`)
-     * * To understand how to set `faceUV` or `faceColors`, please read this by considering the right number of faces of your polyhedron, instead of only 6 for the box : https://doc.babylonjs.com/how_to/createbox_per_face_textures_and_colors
-     * * The parameter `flat` (boolean, default true). If set to false, it gives the polyhedron a single global face, so less vertices and shared normals. In this case, `faceColors` and `faceUV` are ignored
-     * * You can also set the mesh side orientation with the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
-     * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @param name defines the name of the mesh to create
-     * @param options defines the options used to create the mesh
-     * @param scene defines the hosting scene
-     * @returns a new Mesh
-     */
-    Mesh.CreatePolyhedron = function (name, options, scene) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Extends a mesh to a Goldberg mesh
-     * @param mesh the mesh to convert
-     * Warning  the mesh to convert MUST be an import of a peviously exported Goldberg mesh
-     */
-    Mesh.ExtendToGoldberg = function (mesh) {
-    };
-    /**
-     * Creates a sphere based upon an icosahedron with 20 triangular faces which can be subdivided
-     * * The parameter `radius` sets the radius size (float) of the icosphere (default 1)
-     * * You can set some different icosphere dimensions, for instance to build an ellipsoid, by using the parameters `radiusX`, `radiusY` and `radiusZ` (all by default have the same value than `radius`)
-     * * The parameter `subdivisions` sets the number of subdivisions (positive integer, default 4). The more subdivisions, the more faces on the icosphere whatever its size
-     * * The parameter `flat` (boolean, default true) gives each side its own normals. Set it to false to get a smooth continuous light reflection on the surface
-     * * You can also set the mesh side orientation with the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
-     * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @param name defines the name of the mesh
-     * @param options defines the options used to create the mesh
-     * @param scene defines the hosting scene
-     * @returns a new Mesh
-     * @see https://doc.babylonjs.com/how_to/polyhedra_shapes#icosphere
-     */
-    Mesh.CreateIcoSphere = function (name, options, scene) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /**
-     * Creates a decal mesh.
-     * Please consider using the same method from the MeshBuilder class instead.
-     * A decal is a mesh usually applied as a model onto the surface of another mesh
-     * @param name  defines the name of the mesh
-     * @param sourceMesh defines the mesh receiving the decal
-     * @param position sets the position of the decal in world coordinates
-     * @param normal sets the normal of the mesh where the decal is applied onto in world coordinates
-     * @param size sets the decal scaling
-     * @param angle sets the angle to rotate the decal
-     * @returns a new Mesh
-     */
-    Mesh.CreateDecal = function (name, sourceMesh, position, normal, size, angle) {
-        throw _DevTools.WarnImport("MeshBuilder");
-    };
-    /** Creates a Capsule Mesh
-     * @param name defines the name of the mesh.
-     * @param options the constructors options used to shape the mesh.
-     * @param scene defines the scene the mesh is scoped to.
-     * @returns the capsule mesh
-     * @see https://doc.babylonjs.com/how_to/capsule_shape
-     */
-    Mesh.CreateCapsule = function (name, options, scene) {
-        throw _DevTools.WarnImport("MeshBuilder");
     };
     // Skeletons
     /**
@@ -56071,125 +57782,194 @@ var Mesh = /** @class */ (function (_super) {
      */
     Mesh.MergeMeshes = function (meshes, disposeSource, allow32BitsIndices, meshSubclass, subdivideWithSubMeshes, multiMultiMaterials) {
         if (disposeSource === void 0) { disposeSource = true; }
-        // Remove any null/undefined entries from the mesh array
-        meshes = meshes.filter(Boolean);
-        if (meshes.length === 0) {
-            return null;
-        }
-        var index;
-        if (!allow32BitsIndices) {
-            var totalVertices = 0;
-            // Counting vertices
-            for (index = 0; index < meshes.length; index++) {
-                totalVertices += meshes[index].getTotalVertices();
-                if (totalVertices >= 65536) {
-                    Logger.Warn("Cannot merge meshes because resulting mesh will have more than 65536 vertices. Please use allow32BitsIndices = true to use 32 bits indices");
-                    return null;
-                }
-            }
-        }
-        if (multiMultiMaterials) {
-            var newMultiMaterial = null;
-            var subIndex;
-            var matIndex;
-            subdivideWithSubMeshes = false;
-        }
-        var materialArray = new Array();
-        var materialIndexArray = new Array();
-        // Merge
-        var indiceArray = new Array();
-        for (index = 0; index < meshes.length; index++) {
-            var mesh = meshes[index];
-            if (mesh.isAnInstance) {
-                Logger.Warn("Cannot merge instance meshes.");
-                return null;
-            }
-            if (subdivideWithSubMeshes) {
-                indiceArray.push(mesh.getTotalIndices());
-            }
-            if (multiMultiMaterials) {
-                if (mesh.material) {
-                    var material = mesh.material;
-                    if (material instanceof MultiMaterial) {
-                        for (matIndex = 0; matIndex < material.subMaterials.length; matIndex++) {
-                            if (materialArray.indexOf(material.subMaterials[matIndex]) < 0) {
-                                materialArray.push(material.subMaterials[matIndex]);
+        return runCoroutineSync(Mesh._MergeMeshesCoroutine(meshes, disposeSource, allow32BitsIndices, meshSubclass, subdivideWithSubMeshes, multiMultiMaterials, false));
+    };
+    /**
+     * Merge the array of meshes into a single mesh for performance reasons.
+     * @param meshes defines he vertices source.  They should all be of the same material.  Entries can empty
+     * @param disposeSource when true (default), dispose of the vertices from the source meshes
+     * @param allow32BitsIndices when the sum of the vertices > 64k, this must be set to true
+     * @param meshSubclass when set, vertices inserted into this Mesh.  Meshes can then be merged into a Mesh sub-class.
+     * @param subdivideWithSubMeshes when true (false default), subdivide mesh to his subMesh array with meshes source.
+     * @param multiMultiMaterials when true (false default), subdivide mesh and accept multiple multi materials, ignores subdivideWithSubMeshes.
+     * @returns a new mesh
+     */
+    Mesh.MergeMeshesAsync = function (meshes, disposeSource, allow32BitsIndices, meshSubclass, subdivideWithSubMeshes, multiMultiMaterials) {
+        if (disposeSource === void 0) { disposeSource = true; }
+        return runCoroutineAsync(Mesh._MergeMeshesCoroutine(meshes, disposeSource, allow32BitsIndices, meshSubclass, subdivideWithSubMeshes, multiMultiMaterials, true), createYieldingScheduler());
+    };
+    Mesh._MergeMeshesCoroutine = function (meshes, disposeSource, allow32BitsIndices, meshSubclass, subdivideWithSubMeshes, multiMultiMaterials, isAsync) {
+        var index, totalVertices, newMultiMaterial, subIndex, matIndex, materialArray, materialIndexArray, indiceArray, mesh, material, source, getVertexDataFromMesh, sourceVertexData, meshVertexDatas, i, mergeCoroutine, mergeCoroutineStep, vertexData, applyToCoroutine, applyToCoroutineStep, offset, _i, _a, subMesh;
+        if (disposeSource === void 0) { disposeSource = true; }
+        return __generator(this, function (_b) {
+            switch (_b.label) {
+                case 0:
+                    // Remove any null/undefined entries from the mesh array
+                    meshes = meshes.filter(Boolean);
+                    if (meshes.length === 0) {
+                        return [2 /*return*/, null];
+                    }
+                    if (!allow32BitsIndices) {
+                        totalVertices = 0;
+                        // Counting vertices
+                        for (index = 0; index < meshes.length; index++) {
+                            totalVertices += meshes[index].getTotalVertices();
+                            if (totalVertices >= 65536) {
+                                Logger.Warn("Cannot merge meshes because resulting mesh will have more than 65536 vertices. Please use allow32BitsIndices = true to use 32 bits indices");
+                                return [2 /*return*/, null];
                             }
                         }
-                        for (subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
-                            materialIndexArray.push(materialArray.indexOf(material.subMaterials[mesh.subMeshes[subIndex].materialIndex]));
-                            indiceArray.push(mesh.subMeshes[subIndex].indexCount);
+                    }
+                    if (multiMultiMaterials) {
+                        newMultiMaterial = null;
+                        subdivideWithSubMeshes = false;
+                    }
+                    materialArray = new Array();
+                    materialIndexArray = new Array();
+                    indiceArray = new Array();
+                    for (index = 0; index < meshes.length; index++) {
+                        mesh = meshes[index];
+                        if (mesh.isAnInstance) {
+                            Logger.Warn("Cannot merge instance meshes.");
+                            return [2 /*return*/, null];
                         }
+                        if (subdivideWithSubMeshes) {
+                            indiceArray.push(mesh.getTotalIndices());
+                        }
+                        if (multiMultiMaterials) {
+                            if (mesh.material) {
+                                material = mesh.material;
+                                if (material instanceof MultiMaterial) {
+                                    for (matIndex = 0; matIndex < material.subMaterials.length; matIndex++) {
+                                        if (materialArray.indexOf(material.subMaterials[matIndex]) < 0) {
+                                            materialArray.push(material.subMaterials[matIndex]);
+                                        }
+                                    }
+                                    for (subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
+                                        materialIndexArray.push(materialArray.indexOf(material.subMaterials[mesh.subMeshes[subIndex].materialIndex]));
+                                        indiceArray.push(mesh.subMeshes[subIndex].indexCount);
+                                    }
+                                }
+                                else {
+                                    if (materialArray.indexOf(material) < 0) {
+                                        materialArray.push(material);
+                                    }
+                                    for (subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
+                                        materialIndexArray.push(materialArray.indexOf(material));
+                                        indiceArray.push(mesh.subMeshes[subIndex].indexCount);
+                                    }
+                                }
+                            }
+                            else {
+                                for (subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
+                                    materialIndexArray.push(0);
+                                    indiceArray.push(mesh.subMeshes[subIndex].indexCount);
+                                }
+                            }
+                        }
+                    }
+                    source = meshes[0];
+                    getVertexDataFromMesh = function (mesh) {
+                        var wm = mesh.computeWorldMatrix(true);
+                        var vertexData = VertexData.ExtractFromMesh(mesh, true, true);
+                        vertexData.transform(wm);
+                        return vertexData;
+                    };
+                    sourceVertexData = getVertexDataFromMesh(source);
+                    if (!isAsync) return [3 /*break*/, 2];
+                    return [4 /*yield*/];
+                case 1:
+                    _b.sent();
+                    _b.label = 2;
+                case 2:
+                    meshVertexDatas = new Array(meshes.length - 1);
+                    i = 1;
+                    _b.label = 3;
+                case 3:
+                    if (!(i < meshes.length)) return [3 /*break*/, 6];
+                    meshVertexDatas[i - 1] = getVertexDataFromMesh(meshes[i]);
+                    if (!isAsync) return [3 /*break*/, 5];
+                    return [4 /*yield*/];
+                case 4:
+                    _b.sent();
+                    _b.label = 5;
+                case 5:
+                    i++;
+                    return [3 /*break*/, 3];
+                case 6:
+                    mergeCoroutine = sourceVertexData._mergeCoroutine(meshVertexDatas, allow32BitsIndices, isAsync);
+                    mergeCoroutineStep = mergeCoroutine.next();
+                    _b.label = 7;
+                case 7:
+                    if (!!mergeCoroutineStep.done) return [3 /*break*/, 10];
+                    if (!isAsync) return [3 /*break*/, 9];
+                    return [4 /*yield*/];
+                case 8:
+                    _b.sent();
+                    _b.label = 9;
+                case 9:
+                    mergeCoroutineStep = mergeCoroutine.next();
+                    return [3 /*break*/, 7];
+                case 10:
+                    vertexData = mergeCoroutineStep.value;
+                    if (!meshSubclass) {
+                        meshSubclass = new Mesh(source.name + "_merged", source.getScene());
+                    }
+                    applyToCoroutine = vertexData._applyToCoroutine(meshSubclass, undefined, isAsync);
+                    applyToCoroutineStep = applyToCoroutine.next();
+                    _b.label = 11;
+                case 11:
+                    if (!!applyToCoroutineStep.done) return [3 /*break*/, 14];
+                    if (!isAsync) return [3 /*break*/, 13];
+                    return [4 /*yield*/];
+                case 12:
+                    _b.sent();
+                    _b.label = 13;
+                case 13:
+                    applyToCoroutineStep = applyToCoroutine.next();
+                    return [3 /*break*/, 11];
+                case 14:
+                    // Setting properties
+                    meshSubclass.checkCollisions = source.checkCollisions;
+                    meshSubclass.overrideMaterialSideOrientation = source.overrideMaterialSideOrientation;
+                    // Cleaning
+                    if (disposeSource) {
+                        for (index = 0; index < meshes.length; index++) {
+                            meshes[index].dispose();
+                        }
+                    }
+                    // Subdivide
+                    if (subdivideWithSubMeshes || multiMultiMaterials) {
+                        //-- removal of global submesh
+                        meshSubclass.releaseSubMeshes();
+                        index = 0;
+                        offset = 0;
+                        //-- apply subdivision according to index table
+                        while (index < indiceArray.length) {
+                            SubMesh.CreateFromIndices(0, offset, indiceArray[index], meshSubclass, undefined, false);
+                            offset += indiceArray[index];
+                            index++;
+                        }
+                        for (_i = 0, _a = meshSubclass.subMeshes; _i < _a.length; _i++) {
+                            subMesh = _a[_i];
+                            subMesh.refreshBoundingInfo();
+                        }
+                        meshSubclass.computeWorldMatrix(true);
+                    }
+                    if (multiMultiMaterials) {
+                        newMultiMaterial = new MultiMaterial(source.name + "_merged", source.getScene());
+                        newMultiMaterial.subMaterials = materialArray;
+                        for (subIndex = 0; subIndex < meshSubclass.subMeshes.length; subIndex++) {
+                            meshSubclass.subMeshes[subIndex].materialIndex = materialIndexArray[subIndex];
+                        }
+                        meshSubclass.material = newMultiMaterial;
                     }
                     else {
-                        if (materialArray.indexOf(material) < 0) {
-                            materialArray.push(material);
-                        }
-                        for (subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
-                            materialIndexArray.push(materialArray.indexOf(material));
-                            indiceArray.push(mesh.subMeshes[subIndex].indexCount);
-                        }
+                        meshSubclass.material = source.material;
                     }
-                }
-                else {
-                    for (subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
-                        materialIndexArray.push(0);
-                        indiceArray.push(mesh.subMeshes[subIndex].indexCount);
-                    }
-                }
+                    return [2 /*return*/, meshSubclass];
             }
-        }
-        var source = meshes[0];
-        var getVertexDataFromMesh = function (mesh) {
-            var wm = mesh.computeWorldMatrix(true);
-            var vertexData = VertexData.ExtractFromMesh(mesh, true, true);
-            vertexData.transform(wm);
-            return vertexData;
-        };
-        var vertexData = getVertexDataFromMesh(source).merge(meshes.slice(1).map(function (mesh) { return getVertexDataFromMesh(mesh); }), allow32BitsIndices);
-        if (!meshSubclass) {
-            meshSubclass = new Mesh(source.name + "_merged", source.getScene());
-        }
-        vertexData.applyToMesh(meshSubclass);
-        // Setting properties
-        meshSubclass.checkCollisions = source.checkCollisions;
-        meshSubclass.overrideMaterialSideOrientation = source.overrideMaterialSideOrientation;
-        // Cleaning
-        if (disposeSource) {
-            for (index = 0; index < meshes.length; index++) {
-                meshes[index].dispose();
-            }
-        }
-        // Subdivide
-        if (subdivideWithSubMeshes || multiMultiMaterials) {
-            //-- removal of global submesh
-            meshSubclass.releaseSubMeshes();
-            index = 0;
-            var offset = 0;
-            //-- apply subdivision according to index table
-            while (index < indiceArray.length) {
-                SubMesh.CreateFromIndices(0, offset, indiceArray[index], meshSubclass, undefined, false);
-                offset += indiceArray[index];
-                index++;
-            }
-            for (var _i = 0, _a = meshSubclass.subMeshes; _i < _a.length; _i++) {
-                var subMesh = _a[_i];
-                subMesh.refreshBoundingInfo();
-            }
-            meshSubclass.computeWorldMatrix(true);
-        }
-        if (multiMultiMaterials) {
-            newMultiMaterial = new MultiMaterial(source.name + "_merged", source.getScene());
-            newMultiMaterial.subMaterials = materialArray;
-            for (subIndex = 0; subIndex < meshSubclass.subMeshes.length; subIndex++) {
-                meshSubclass.subMeshes[subIndex].materialIndex = materialIndexArray[subIndex];
-            }
-            meshSubclass.material = newMultiMaterial;
-        }
-        else {
-            meshSubclass.material = source.material;
-        }
-        return meshSubclass;
+        });
     };
     /** @hidden */
     Mesh.prototype.addInstance = function (instance) {
@@ -56298,17 +58078,29 @@ var Mesh = /** @class */ (function (_super) {
     // Statics
     /** @hidden */
     Mesh._GroundMeshParser = function (parsedMesh, scene) {
-        throw _DevTools.WarnImport("GroundMesh");
+        throw _WarnImport("GroundMesh");
     };
     /** @hidden */
     Mesh._LinesMeshParser = function (parsedMesh, scene) {
-        throw _DevTools.WarnImport("LinesMesh");
+        throw _WarnImport("LinesMesh");
     };
     return Mesh;
 }(AbstractMesh));
-_TypeStore.RegisteredTypes["BABYLON.Mesh"] = Mesh;
+RegisterClass("BABYLON.Mesh", Mesh);
+_injectLTSMesh(Mesh);
 
-VertexData.CreateDisc = function (options) {
+/**
+ * Creates the VertexData of the Disc or regular Polygon
+ * @param options an object used to set the following optional parameters for the disc, required but can be empty
+  * * radius the radius of the disc, optional default 0.5
+  * * tessellation the number of polygon sides, optional, default 64
+  * * arc a number from 0 to 1, to create an unclosed polygon based on the fraction of the circumference given by the arc value, optional, default 1
+  * * sideOrientation optional and takes the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
+  * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
+  * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
+ * @returns the VertexData of the box
+ */
+function CreateDiscVertexData(options) {
     var positions = new Array();
     var indices = new Array();
     var normals = new Array();
@@ -56350,7 +58142,32 @@ VertexData.CreateDisc = function (options) {
     vertexData.normals = normals;
     vertexData.uvs = uvs;
     return vertexData;
-};
+}
+/**
+ * Creates a plane polygonal mesh.  By default, this is a disc
+ * * The parameter `radius` sets the radius size (float) of the polygon (default 0.5)
+ * * The parameter `tessellation` sets the number of polygon sides (positive integer, default 64). So a tessellation valued to 3 will build a triangle, to 4 a square, etc
+ * * You can create an unclosed polygon with the parameter `arc` (positive float, default 1), valued between 0 and 1, what is the ratio of the circumference : 2 x PI x ratio
+ * * You can also set the mesh side orientation with the values : BABYLON.Mesh.FRONTSIDE (default), BABYLON.Mesh.BACKSIDE or BABYLON.Mesh.DOUBLESIDE
+ * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation
+ * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+ * @param name defines the name of the mesh
+ * @param options defines the options used to create the mesh
+ * @param scene defines the hosting scene
+ * @returns the plane polygonal mesh
+ * @see https://doc.babylonjs.com/how_to/set_shapes#disc-or-regular-polygon
+ */
+function CreateDisc(name, options, scene) {
+    if (options === void 0) { options = {}; }
+    if (scene === void 0) { scene = null; }
+    var disc = new Mesh(name, scene);
+    options.sideOrientation = Mesh._GetDefaultSideOrientation(options.sideOrientation);
+    disc._originalBuilderSideOrientation = options.sideOrientation;
+    var vertexData = CreateDiscVertexData(options);
+    vertexData.applyToMesh(disc, options.updatable);
+    return disc;
+}
+VertexData.CreateDisc = CreateDiscVertexData;
 Mesh.CreateDisc = function (name, radius, tessellation, scene, updatable, sideOrientation) {
     if (scene === void 0) { scene = null; }
     var options = {
@@ -56359,39 +58176,8 @@ Mesh.CreateDisc = function (name, radius, tessellation, scene, updatable, sideOr
         sideOrientation: sideOrientation,
         updatable: updatable
     };
-    return DiscBuilder.CreateDisc(name, options, scene);
+    return CreateDisc(name, options, scene);
 };
-/**
- * Class containing static functions to help procedurally build meshes
- */
-var DiscBuilder = /** @class */ (function () {
-    function DiscBuilder() {
-    }
-    /**
-     * Creates a plane polygonal mesh.  By default, this is a disc
-     * * The parameter `radius` sets the radius size (float) of the polygon (default 0.5)
-     * * The parameter `tessellation` sets the number of polygon sides (positive integer, default 64). So a tessellation valued to 3 will build a triangle, to 4 a square, etc
-     * * You can create an unclosed polygon with the parameter `arc` (positive float, default 1), valued between 0 and 1, what is the ratio of the circumference : 2 x PI x ratio
-     * * You can also set the mesh side orientation with the values : BABYLON.Mesh.FRONTSIDE (default), BABYLON.Mesh.BACKSIDE or BABYLON.Mesh.DOUBLESIDE
-     * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @param name defines the name of the mesh
-     * @param options defines the options used to create the mesh
-     * @param scene defines the hosting scene
-     * @returns the plane polygonal mesh
-     * @see https://doc.babylonjs.com/how_to/set_shapes#disc-or-regular-polygon
-     */
-    DiscBuilder.CreateDisc = function (name, options, scene) {
-        if (scene === void 0) { scene = null; }
-        var disc = new Mesh(name, scene);
-        options.sideOrientation = Mesh._GetDefaultSideOrientation(options.sideOrientation);
-        disc._originalBuilderSideOrientation = options.sideOrientation;
-        var vertexData = VertexData.CreateDisc(options);
-        vertexData.applyToMesh(disc, options.updatable);
-        return disc;
-    };
-    return DiscBuilder;
-}());
 
 Mesh._instancedMeshFactory = function (name, mesh) {
     var instance = new InstancedMesh(name, mesh);
@@ -56965,7 +58751,7 @@ function shadow (noa, dist) {
 
     // create a mesh to re-use for shadows
     var scene = noa.rendering.getScene();
-    var disc = Mesh.CreateDisc('shadow', 0.75, 30, scene);
+    var disc = CreateDisc('shadow', { radius: 0.75, tessellation: 30 }, scene);
     disc.rotation.x = Math.PI / 2;
     var mat = noa.rendering.makeStandardMaterial('shadowMat');
     mat.diffuseColor = Color3.Black();
@@ -57920,13 +59706,14 @@ Mesh.prototype.thinInstanceSetBuffer = function (kind, buffer, stride, staticBuf
     }
 };
 Mesh.prototype.thinInstanceBufferUpdated = function (kind) {
-    var _a;
+    var _a, _b, _c;
     if (kind === "matrix") {
-        if (this._thinInstanceDataStorage.matrixBuffer) {
-            this._thinInstanceDataStorage.matrixBuffer.updateDirectly(this._thinInstanceDataStorage.matrixData, 0, this._thinInstanceDataStorage.instancesCount);
-        }
+        (_a = this._thinInstanceDataStorage.matrixBuffer) === null || _a === void 0 ? void 0 : _a.updateDirectly(this._thinInstanceDataStorage.matrixData, 0, this._thinInstanceDataStorage.instancesCount);
     }
-    else if ((_a = this._userThinInstanceBuffersStorage) === null || _a === void 0 ? void 0 : _a.vertexBuffers[kind]) {
+    else if (kind === "previousMatrix") {
+        (_b = this._thinInstanceDataStorage.previousMatrixBuffer) === null || _b === void 0 ? void 0 : _b.updateDirectly(this._thinInstanceDataStorage.previousMatrixData, 0, this._thinInstanceDataStorage.instancesCount);
+    }
+    else if ((_c = this._userThinInstanceBuffersStorage) === null || _c === void 0 ? void 0 : _c.vertexBuffers[kind]) {
         this._userThinInstanceBuffersStorage.vertexBuffers[kind].updateDirectly(this._userThinInstanceBuffersStorage.data[kind], 0);
     }
 };
@@ -58863,6 +60650,8 @@ var BaseTexture = /** @class */ (function (_super) {
         _this.isRenderTarget = false;
         /** @hidden */
         _this._prefiltered = false;
+        /** @hidden */
+        _this._forceSerialize = false;
         /**
          * Define the list of animation attached to the texture.
          */
@@ -59183,7 +60972,7 @@ var BaseTexture = /** @class */ (function (_super) {
          */
         get: function () {
             if (!this._uid) {
-                this._uid = GUID.RandomId();
+                this._uid = RandomGUID();
             }
             return this._uid;
         },
@@ -59638,115 +61427,107 @@ var BaseTexture = /** @class */ (function (_super) {
 }(ThinTexture));
 
 /**
- * Class used to host copy specific utilities
+ * Transform some pixel data to a base64 string
+ * @param pixels defines the pixel data to transform to base64
+ * @param size defines the width and height of the (texture) data
+ * @param invertY true if the data must be inverted for the Y coordinate during the conversion
+ * @returns The base64 encoded string or null
  */
-var CopyTools = /** @class */ (function () {
-    function CopyTools() {
+function GenerateBase64StringFromPixelData(pixels, size, invertY) {
+    if (invertY === void 0) { invertY = false; }
+    var width = size.width;
+    var height = size.height;
+    if (pixels instanceof Float32Array) {
+        var len = pixels.byteLength / pixels.BYTES_PER_ELEMENT;
+        var npixels = new Uint8Array(len);
+        while (--len >= 0) {
+            var val = pixels[len];
+            if (val < 0) {
+                val = 0;
+            }
+            else if (val > 1) {
+                val = 1;
+            }
+            npixels[len] = val * 255;
+        }
+        pixels = npixels;
     }
-    /**
-     * Transform some pixel data to a base64 string
-     * @param pixels defines the pixel data to transform to base64
-     * @param size defines the width and height of the (texture) data
-     * @param invertY true if the data must be inverted for the Y coordinate during the conversion
-     * @returns The base64 encoded string or null
-     */
-    CopyTools.GenerateBase64StringFromPixelData = function (pixels, size, invertY) {
-        if (invertY === void 0) { invertY = false; }
-        var width = size.width;
-        var height = size.height;
-        if (pixels instanceof Float32Array) {
-            var len = pixels.byteLength / pixels.BYTES_PER_ELEMENT;
-            var npixels = new Uint8Array(len);
-            while (--len >= 0) {
-                var val = pixels[len];
-                if (val < 0) {
-                    val = 0;
-                }
-                else if (val > 1) {
-                    val = 1;
-                }
-                npixels[len] = val * 255;
+    var canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) {
+        return null;
+    }
+    var imageData = ctx.createImageData(width, height);
+    var castData = imageData.data;
+    castData.set(pixels);
+    ctx.putImageData(imageData, 0, 0);
+    if (invertY) {
+        var canvas2 = document.createElement('canvas');
+        canvas2.width = width;
+        canvas2.height = height;
+        var ctx2 = canvas2.getContext('2d');
+        if (!ctx2) {
+            return null;
+        }
+        ctx2.translate(0, height);
+        ctx2.scale(1, -1);
+        ctx2.drawImage(canvas, 0, 0);
+        return canvas2.toDataURL('image/png');
+    }
+    return canvas.toDataURL('image/png');
+}
+/**
+ * Reads the pixels stored in the webgl texture and returns them as a base64 string
+ * @param texture defines the texture to read pixels from
+ * @param faceIndex defines the face of the texture to read (in case of cube texture)
+ * @param level defines the LOD level of the texture to read (in case of Mip Maps)
+ * @returns The base64 encoded string or null
+ */
+function GenerateBase64StringFromTexture(texture, faceIndex, level) {
+    if (faceIndex === void 0) { faceIndex = 0; }
+    if (level === void 0) { level = 0; }
+    var internalTexture = texture.getInternalTexture();
+    if (!internalTexture) {
+        return null;
+    }
+    var pixels = texture._readPixelsSync(faceIndex, level);
+    if (!pixels) {
+        return null;
+    }
+    return GenerateBase64StringFromPixelData(pixels, texture.getSize(), internalTexture.invertY);
+}
+/**
+ * Reads the pixels stored in the webgl texture and returns them as a base64 string
+ * @param texture defines the texture to read pixels from
+ * @param faceIndex defines the face of the texture to read (in case of cube texture)
+ * @param level defines the LOD level of the texture to read (in case of Mip Maps)
+ * @returns The base64 encoded string or null wrapped in a promise
+ */
+function GenerateBase64StringFromTextureAsync(texture, faceIndex, level) {
+    if (faceIndex === void 0) { faceIndex = 0; }
+    if (level === void 0) { level = 0; }
+    return __awaiter(this, void 0, void 0, function () {
+        var internalTexture, pixels;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    internalTexture = texture.getInternalTexture();
+                    if (!internalTexture) {
+                        return [2 /*return*/, null];
+                    }
+                    return [4 /*yield*/, texture.readPixels(faceIndex, level)];
+                case 1:
+                    pixels = _a.sent();
+                    if (!pixels) {
+                        return [2 /*return*/, null];
+                    }
+                    return [2 /*return*/, GenerateBase64StringFromPixelData(pixels, texture.getSize(), internalTexture.invertY)];
             }
-            pixels = npixels;
-        }
-        var canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        var ctx = canvas.getContext('2d');
-        if (!ctx) {
-            return null;
-        }
-        var imageData = ctx.createImageData(width, height);
-        var castData = imageData.data;
-        castData.set(pixels);
-        ctx.putImageData(imageData, 0, 0);
-        if (invertY) {
-            var canvas2 = document.createElement('canvas');
-            canvas2.width = width;
-            canvas2.height = height;
-            var ctx2 = canvas2.getContext('2d');
-            if (!ctx2) {
-                return null;
-            }
-            ctx2.translate(0, height);
-            ctx2.scale(1, -1);
-            ctx2.drawImage(canvas, 0, 0);
-            return canvas2.toDataURL('image/png');
-        }
-        return canvas.toDataURL('image/png');
-    };
-    /**
-     * Reads the pixels stored in the webgl texture and returns them as a base64 string
-     * @param texture defines the texture to read pixels from
-     * @param faceIndex defines the face of the texture to read (in case of cube texture)
-     * @param level defines the LOD level of the texture to read (in case of Mip Maps)
-     * @returns The base64 encoded string or null
-     */
-    CopyTools.GenerateBase64StringFromTexture = function (texture, faceIndex, level) {
-        if (faceIndex === void 0) { faceIndex = 0; }
-        if (level === void 0) { level = 0; }
-        var internalTexture = texture.getInternalTexture();
-        if (!internalTexture) {
-            return null;
-        }
-        var pixels = texture._readPixelsSync(faceIndex, level);
-        if (!pixels) {
-            return null;
-        }
-        return CopyTools.GenerateBase64StringFromPixelData(pixels, texture.getSize(), internalTexture.invertY);
-    };
-    /**
-     * Reads the pixels stored in the webgl texture and returns them as a base64 string
-     * @param texture defines the texture to read pixels from
-     * @param faceIndex defines the face of the texture to read (in case of cube texture)
-     * @param level defines the LOD level of the texture to read (in case of Mip Maps)
-     * @returns The base64 encoded string or null wrapped in a promise
-     */
-    CopyTools.GenerateBase64StringFromTextureAsync = function (texture, faceIndex, level) {
-        if (faceIndex === void 0) { faceIndex = 0; }
-        if (level === void 0) { level = 0; }
-        return __awaiter(this, void 0, void 0, function () {
-            var internalTexture, pixels;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        internalTexture = texture.getInternalTexture();
-                        if (!internalTexture) {
-                            return [2 /*return*/, null];
-                        }
-                        return [4 /*yield*/, texture.readPixels(faceIndex, level)];
-                    case 1:
-                        pixels = _a.sent();
-                        if (!pixels) {
-                            return [2 /*return*/, null];
-                        }
-                        return [2 /*return*/, CopyTools.GenerateBase64StringFromPixelData(pixels, texture.getSize(), internalTexture.invertY)];
-                }
-            });
         });
-    };
-    return CopyTools;
-}());
+    });
+}
 
 /**
  * This represents a texture in babylon. It can be easily loaded from a network, base64 or html input.
@@ -59981,7 +61762,12 @@ var Texture = /** @class */ (function (_super) {
                 TimingTools.SetImmediate(function () { return load(); });
             }
             else {
-                _this._texture.onLoadedObservable.add(load);
+                var loadObserver_1 = _this._texture.onLoadedObservable.add(load);
+                _this._texture.onErrorObservable.add(function (e) {
+                    var _a;
+                    errorHandler(e.message, e.exception);
+                    (_a = _this._texture) === null || _a === void 0 ? void 0 : _a.onLoadedObservable.remove(loadObserver_1);
+                });
             }
         }
         return _this;
@@ -60040,7 +61826,7 @@ var Texture = /** @class */ (function (_super) {
             this.releaseInternalTexture();
             this.getScene().markAllMaterialsAsDirty(1);
         }
-        if (!this.name || StringTools.StartsWith(this.name, "data:")) {
+        if (!this.name || StartsWith(this.name, "data:")) {
             this.name = url;
         }
         this.url = url;
@@ -60173,6 +61959,8 @@ var Texture = /** @class */ (function (_super) {
         if (!scene) {
             return this._cachedTextureMatrix;
         }
+        // We flag the materials that are using this texture as "texture dirty" because depending on the fact that the matrix is the identity or not, some defines
+        // will get different values (see MaterialHelper.PrepareDefinesForMergedUV), meaning we should regenerate the effect accordingly
         scene.markAllMaterialsAsDirty(1, function (mat) {
             return mat.hasTexture(_this);
         });
@@ -60208,6 +61996,7 @@ var Texture = /** @class */ (function (_super) {
         if (!this._projectionModeMatrix) {
             this._projectionModeMatrix = Matrix.Zero();
         }
+        var flagMaterialsAsTextureDirty = this._cachedCoordinatesMode !== this.coordinatesMode;
         this._cachedUOffset = this.uOffset;
         this._cachedVOffset = this.vOffset;
         this._cachedUScale = this.uScale;
@@ -60231,9 +62020,13 @@ var Texture = /** @class */ (function (_super) {
                 Matrix.IdentityToRef(this._cachedTextureMatrix);
                 break;
         }
-        scene.markAllMaterialsAsDirty(1, function (mat) {
-            return (mat.getActiveTextures().indexOf(_this) !== -1);
-        });
+        if (flagMaterialsAsTextureDirty) {
+            // We flag the materials that are using this texture as "texture dirty" if the coordinatesMode has changed.
+            // Indeed, this property is used to set the value of some defines used to generate the effect (in material.isReadyForSubMesh), so we must make sure this code will be re-executed and the effect recreated if necessary
+            scene.markAllMaterialsAsDirty(1, function (mat) {
+                return (mat.getActiveTextures().indexOf(_this) !== -1);
+            });
+        }
         return this._cachedTextureMatrix;
     };
     /**
@@ -60267,11 +62060,11 @@ var Texture = /** @class */ (function (_super) {
     Texture.prototype.serialize = function () {
         var savedName = this.name;
         if (!Texture.SerializeBuffers) {
-            if (StringTools.StartsWith(this.name, "data:")) {
+            if (StartsWith(this.name, "data:")) {
                 this.name = "";
             }
         }
-        if (StringTools.StartsWith(this.name, "data:") && this.url === this.name) {
+        if (StartsWith(this.name, "data:") && this.url === this.name) {
             this.url = "";
         }
         var serializationObject = _super.prototype.serialize.call(this);
@@ -60283,11 +62076,11 @@ var Texture = /** @class */ (function (_super) {
                 serializationObject.base64String = this._buffer;
                 serializationObject.name = serializationObject.name.replace("data:", "");
             }
-            else if (this.url && StringTools.StartsWith(this.url, "data:") && this._buffer instanceof Uint8Array) {
-                serializationObject.base64String = "data:image/png;base64," + StringTools.EncodeArrayBufferToBase64(this._buffer);
+            else if (this.url && StartsWith(this.url, "data:") && this._buffer instanceof Uint8Array) {
+                serializationObject.base64String = "data:image/png;base64," + EncodeArrayBufferToBase64(this._buffer);
             }
-            else if (Texture.ForceSerializeBuffers) {
-                serializationObject.base64String = !this._engine || this._engine._features.supportSyncTextureRead ? CopyTools.GenerateBase64StringFromTexture(this) : CopyTools.GenerateBase64StringFromTextureAsync(this);
+            else if (Texture.ForceSerializeBuffers || (this.url && StartsWith(this.url, "blob:")) || this._forceSerialize) {
+                serializationObject.base64String = !this._engine || this._engine._features.supportSyncTextureRead ? GenerateBase64StringFromTexture(this) : GenerateBase64StringFromTextureAsync(this);
             }
         }
         serializationObject.invertY = this._invertY;
@@ -60356,7 +62149,7 @@ var Texture = /** @class */ (function (_super) {
             if (texture && parsedTexture.animations) {
                 for (var animationIndex = 0; animationIndex < parsedTexture.animations.length; animationIndex++) {
                     var parsedAnimation = parsedTexture.animations[animationIndex];
-                    var internalClass = _TypeStore.GetClass("BABYLON.Animation");
+                    var internalClass = GetClass("BABYLON.Animation");
                     if (internalClass) {
                         texture.animations.push(internalClass.Parse(parsedAnimation));
                     }
@@ -60409,7 +62202,7 @@ var Texture = /** @class */ (function (_super) {
                     else {
                         url = rootUrl + parsedTexture.name;
                     }
-                    if (StringTools.StartsWith(parsedTexture.url, "data:") || (Texture.UseSerializedUrlIfAny && parsedTexture.url)) {
+                    if (StartsWith(parsedTexture.url, "data:") || (Texture.UseSerializedUrlIfAny && parsedTexture.url)) {
                         url = parsedTexture.url;
                     }
                     texture = new Texture(url, scene, !generateMipMaps, parsedTexture.invertY, parsedTexture.samplingMode, onLoaded);
@@ -60483,15 +62276,15 @@ var Texture = /** @class */ (function (_super) {
     Texture.OnTextureLoadErrorObservable = new Observable();
     /** @hidden */
     Texture._CubeTextureParser = function (jsonTexture, scene, rootUrl) {
-        throw _DevTools.WarnImport("CubeTexture");
+        throw _WarnImport("CubeTexture");
     };
     /** @hidden */
     Texture._CreateMirror = function (name, renderTargetSize, scene, generateMipMaps) {
-        throw _DevTools.WarnImport("MirrorTexture");
+        throw _WarnImport("MirrorTexture");
     };
     /** @hidden */
     Texture._CreateRenderTargetTexture = function (name, renderTargetSize, scene, generateMipMaps, creationFlags) {
-        throw _DevTools.WarnImport("RenderTargetTexture");
+        throw _WarnImport("RenderTargetTexture");
     };
     /** nearest is mag = nearest and min = nearest and mip = linear */
     Texture.NEAREST_SAMPLINGMODE = 1;
@@ -60595,7 +62388,7 @@ var Texture = /** @class */ (function (_super) {
     return Texture;
 }(BaseTexture));
 // References the dependencies.
-_TypeStore.RegisteredTypes["BABYLON.Texture"] = Texture;
+RegisterClass("BABYLON.Texture", Texture);
 SerializationHelper._TextureParser = Texture.Parse;
 
 /** 
@@ -62503,1256 +64296,6 @@ var Octree = /** @class */ (function () {
 }());
 
 /**
- * Class used to represent a viewport on screen
- */
-var Viewport = /** @class */ (function () {
-    /**
-     * Creates a Viewport object located at (x, y) and sized (width, height)
-     * @param x defines viewport left coordinate
-     * @param y defines viewport top coordinate
-     * @param width defines the viewport width
-     * @param height defines the viewport height
-     */
-    function Viewport(
-    /** viewport left coordinate */
-    x, 
-    /** viewport top coordinate */
-    y, 
-    /**viewport width */
-    width, 
-    /** viewport height */
-    height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-    }
-    /**
-     * Creates a new viewport using absolute sizing (from 0-> width, 0-> height instead of 0->1)
-     * @param renderWidth defines the rendering width
-     * @param renderHeight defines the rendering height
-     * @returns a new Viewport
-     */
-    Viewport.prototype.toGlobal = function (renderWidth, renderHeight) {
-        return new Viewport(this.x * renderWidth, this.y * renderHeight, this.width * renderWidth, this.height * renderHeight);
-    };
-    /**
-     * Stores absolute viewport value into a target viewport (from 0-> width, 0-> height instead of 0->1)
-     * @param renderWidth defines the rendering width
-     * @param renderHeight defines the rendering height
-     * @param ref defines the target viewport
-     * @returns the current viewport
-     */
-    Viewport.prototype.toGlobalToRef = function (renderWidth, renderHeight, ref) {
-        ref.x = this.x * renderWidth;
-        ref.y = this.y * renderHeight;
-        ref.width = this.width * renderWidth;
-        ref.height = this.height * renderHeight;
-        return this;
-    };
-    /**
-     * Returns a new Viewport copied from the current one
-     * @returns a new Viewport
-     */
-    Viewport.prototype.clone = function () {
-        return new Viewport(this.x, this.y, this.width, this.height);
-    };
-    return Viewport;
-}());
-
-/**
- * This is the base class of all the camera used in the application.
- * @see https://doc.babylonjs.com/features/cameras
- */
-var Camera = /** @class */ (function (_super) {
-    __extends(Camera, _super);
-    /**
-     * Instantiates a new camera object.
-     * This should not be used directly but through the inherited cameras: ArcRotate, Free...
-     * @see https://doc.babylonjs.com/features/cameras
-     * @param name Defines the name of the camera in the scene
-     * @param position Defines the position of the camera
-     * @param scene Defines the scene the camera belongs too
-     * @param setActiveOnSceneIfNoneActive Defines if the camera should be set as active after creation if no other camera have been defined in the scene
-     */
-    function Camera(name, position, scene, setActiveOnSceneIfNoneActive) {
-        if (setActiveOnSceneIfNoneActive === void 0) { setActiveOnSceneIfNoneActive = true; }
-        var _this = _super.call(this, name, scene) || this;
-        /** @hidden */
-        _this._position = Vector3.Zero();
-        _this._upVector = Vector3.Up();
-        /**
-         * Define the current limit on the left side for an orthographic camera
-         * In scene unit
-         */
-        _this.orthoLeft = null;
-        /**
-         * Define the current limit on the right side for an orthographic camera
-         * In scene unit
-         */
-        _this.orthoRight = null;
-        /**
-         * Define the current limit on the bottom side for an orthographic camera
-         * In scene unit
-         */
-        _this.orthoBottom = null;
-        /**
-         * Define the current limit on the top side for an orthographic camera
-         * In scene unit
-         */
-        _this.orthoTop = null;
-        /**
-         * Field Of View is set in Radians. (default is 0.8)
-         */
-        _this.fov = 0.8;
-        /**
-         * Projection plane tilt around the X axis (horizontal), set in Radians. (default is 0)
-         * Can be used to make vertical lines in world space actually vertical on the screen.
-         * See https://forum.babylonjs.com/t/add-vertical-shift-to-3ds-max-exporter-babylon-cameras/17480
-         */
-        _this.projectionPlaneTilt = 0;
-        /**
-         * Define the minimum distance the camera can see from.
-         * This is important to note that the depth buffer are not infinite and the closer it starts
-         * the more your scene might encounter depth fighting issue.
-         */
-        _this.minZ = 1;
-        /**
-         * Define the maximum distance the camera can see to.
-         * This is important to note that the depth buffer are not infinite and the further it end
-         * the more your scene might encounter depth fighting issue.
-         */
-        _this.maxZ = 10000.0;
-        /**
-         * Define the default inertia of the camera.
-         * This helps giving a smooth feeling to the camera movement.
-         */
-        _this.inertia = 0.9;
-        /**
-         * Define the mode of the camera (Camera.PERSPECTIVE_CAMERA or Camera.ORTHOGRAPHIC_CAMERA)
-         */
-        _this.mode = Camera.PERSPECTIVE_CAMERA;
-        /**
-         * Define whether the camera is intermediate.
-         * This is useful to not present the output directly to the screen in case of rig without post process for instance
-         */
-        _this.isIntermediate = false;
-        /**
-         * Define the viewport of the camera.
-         * This correspond to the portion of the screen the camera will render to in normalized 0 to 1 unit.
-         */
-        _this.viewport = new Viewport(0, 0, 1.0, 1.0);
-        /**
-         * Restricts the camera to viewing objects with the same layerMask.
-         * A camera with a layerMask of 1 will render mesh.layerMask & camera.layerMask!== 0
-         */
-        _this.layerMask = 0x0FFFFFFF;
-        /**
-         * fovMode sets the camera frustum bounds to the viewport bounds. (default is FOVMODE_VERTICAL_FIXED)
-         */
-        _this.fovMode = Camera.FOVMODE_VERTICAL_FIXED;
-        /**
-         * Rig mode of the camera.
-         * This is useful to create the camera with two "eyes" instead of one to create VR or stereoscopic scenes.
-         * This is normally controlled byt the camera themselves as internal use.
-         */
-        _this.cameraRigMode = Camera.RIG_MODE_NONE;
-        /**
-         * Defines the list of custom render target which are rendered to and then used as the input to this camera's render. Eg. display another camera view on a TV in the main scene
-         * This is pretty helpful if you wish to make a camera render to a texture you could reuse somewhere
-         * else in the scene. (Eg. security camera)
-         *
-         * To change the final output target of the camera, camera.outputRenderTarget should be used instead (eg. webXR renders to a render target corresponding to an HMD)
-         */
-        _this.customRenderTargets = new Array();
-        /**
-         * When set, the camera will render to this render target instead of the default canvas
-         *
-         * If the desire is to use the output of a camera as a texture in the scene consider using camera.customRenderTargets instead
-         */
-        _this.outputRenderTarget = null;
-        /**
-         * Observable triggered when the camera view matrix has changed.
-         */
-        _this.onViewMatrixChangedObservable = new Observable();
-        /**
-         * Observable triggered when the camera Projection matrix has changed.
-         */
-        _this.onProjectionMatrixChangedObservable = new Observable();
-        /**
-         * Observable triggered when the inputs have been processed.
-         */
-        _this.onAfterCheckInputsObservable = new Observable();
-        /**
-         * Observable triggered when reset has been called and applied to the camera.
-         */
-        _this.onRestoreStateObservable = new Observable();
-        /**
-         * Is this camera a part of a rig system?
-         */
-        _this.isRigCamera = false;
-        /** @hidden */
-        _this._rigCameras = new Array();
-        _this._webvrViewMatrix = Matrix.Identity();
-        /** @hidden */
-        _this._skipRendering = false;
-        /** @hidden */
-        _this._projectionMatrix = new Matrix();
-        /** @hidden */
-        _this._postProcesses = new Array();
-        /** @hidden */
-        _this._activeMeshes = new SmartArray(256);
-        _this._globalPosition = Vector3.Zero();
-        /** @hidden */
-        _this._computedViewMatrix = Matrix.Identity();
-        _this._doNotComputeProjectionMatrix = false;
-        _this._transformMatrix = Matrix.Zero();
-        _this._refreshFrustumPlanes = true;
-        _this._absoluteRotation = Quaternion.Identity();
-        /** @hidden */
-        _this._isCamera = true;
-        /** @hidden */
-        _this._isLeftCamera = false;
-        /** @hidden */
-        _this._isRightCamera = false;
-        _this.getScene().addCamera(_this);
-        if (setActiveOnSceneIfNoneActive && !_this.getScene().activeCamera) {
-            _this.getScene().activeCamera = _this;
-        }
-        _this.position = position;
-        return _this;
-    }
-    Object.defineProperty(Camera.prototype, "position", {
-        /**
-         * Define the current local position of the camera in the scene
-         */
-        get: function () {
-            return this._position;
-        },
-        set: function (newPosition) {
-            this._position = newPosition;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(Camera.prototype, "upVector", {
-        get: function () {
-            return this._upVector;
-        },
-        /**
-         * The vector the camera should consider as up.
-         * (default is Vector3(0, 1, 0) aka Vector3.Up())
-         */
-        set: function (vec) {
-            this._upVector = vec;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(Camera.prototype, "screenArea", {
-        /**
-         * The screen area in scene units squared
-         */
-        get: function () {
-            var _a, _b, _c, _d;
-            var x = 0;
-            var y = 0;
-            if (this.mode === Camera.PERSPECTIVE_CAMERA) {
-                if (this.fovMode === Camera.FOVMODE_VERTICAL_FIXED) {
-                    y = this.minZ * 2 * Math.tan(this.fov / 2);
-                    x = this.getEngine().getAspectRatio(this) * y;
-                }
-                else {
-                    x = this.minZ * 2 * Math.tan(this.fov / 2);
-                    y = x / this.getEngine().getAspectRatio(this);
-                }
-            }
-            else {
-                var halfWidth = this.getEngine().getRenderWidth() / 2.0;
-                var halfHeight = this.getEngine().getRenderHeight() / 2.0;
-                x = ((_a = this.orthoRight) !== null && _a !== void 0 ? _a : halfWidth) - ((_b = this.orthoLeft) !== null && _b !== void 0 ? _b : -halfWidth);
-                y = ((_c = this.orthoTop) !== null && _c !== void 0 ? _c : halfHeight) - ((_d = this.orthoBottom) !== null && _d !== void 0 ? _d : -halfHeight);
-            }
-            return x * y;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    /**
-     * Store current camera state (fov, position, etc..)
-     * @returns the camera
-     */
-    Camera.prototype.storeState = function () {
-        this._stateStored = true;
-        this._storedFov = this.fov;
-        return this;
-    };
-    /**
-     * Restores the camera state values if it has been stored. You must call storeState() first
-     */
-    Camera.prototype._restoreStateValues = function () {
-        if (!this._stateStored) {
-            return false;
-        }
-        this.fov = this._storedFov;
-        return true;
-    };
-    /**
-     * Restored camera state. You must call storeState() first.
-     * @returns true if restored and false otherwise
-     */
-    Camera.prototype.restoreState = function () {
-        if (this._restoreStateValues()) {
-            this.onRestoreStateObservable.notifyObservers(this);
-            return true;
-        }
-        return false;
-    };
-    /**
-     * Gets the class name of the camera.
-     * @returns the class name
-     */
-    Camera.prototype.getClassName = function () {
-        return "Camera";
-    };
-    /**
-     * Gets a string representation of the camera useful for debug purpose.
-     * @param fullDetails Defines that a more verboe level of logging is required
-     * @returns the string representation
-     */
-    Camera.prototype.toString = function (fullDetails) {
-        var ret = "Name: " + this.name;
-        ret += ", type: " + this.getClassName();
-        if (this.animations) {
-            for (var i = 0; i < this.animations.length; i++) {
-                ret += ", animation[0]: " + this.animations[i].toString(fullDetails);
-            }
-        }
-        return ret;
-    };
-    /**
-     * Automatically tilts the projection plane, using `projectionPlaneTilt`, to correct the perspective effect on vertical lines.
-     */
-    Camera.prototype.applyVerticalCorrection = function () {
-        var rot = this.absoluteRotation.toEulerAngles();
-        this.projectionPlaneTilt = this._scene.useRightHandedSystem ? -rot.x : rot.x;
-    };
-    Object.defineProperty(Camera.prototype, "globalPosition", {
-        /**
-         * Gets the current world space position of the camera.
-         */
-        get: function () {
-            return this._globalPosition;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    /**
-     * Gets the list of active meshes this frame (meshes no culled or excluded by lod s in the frame)
-     * @returns the active meshe list
-     */
-    Camera.prototype.getActiveMeshes = function () {
-        return this._activeMeshes;
-    };
-    /**
-     * Check whether a mesh is part of the current active mesh list of the camera
-     * @param mesh Defines the mesh to check
-     * @returns true if active, false otherwise
-     */
-    Camera.prototype.isActiveMesh = function (mesh) {
-        return (this._activeMeshes.indexOf(mesh) !== -1);
-    };
-    /**
-     * Is this camera ready to be used/rendered
-     * @param completeCheck defines if a complete check (including post processes) has to be done (false by default)
-     * @return true if the camera is ready
-     */
-    Camera.prototype.isReady = function (completeCheck) {
-        if (completeCheck === void 0) { completeCheck = false; }
-        if (completeCheck) {
-            for (var _i = 0, _a = this._postProcesses; _i < _a.length; _i++) {
-                var pp = _a[_i];
-                if (pp && !pp.isReady()) {
-                    return false;
-                }
-            }
-        }
-        return _super.prototype.isReady.call(this, completeCheck);
-    };
-    /** @hidden */
-    Camera.prototype._initCache = function () {
-        _super.prototype._initCache.call(this);
-        this._cache.position = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
-        this._cache.upVector = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
-        this._cache.mode = undefined;
-        this._cache.minZ = undefined;
-        this._cache.maxZ = undefined;
-        this._cache.fov = undefined;
-        this._cache.fovMode = undefined;
-        this._cache.aspectRatio = undefined;
-        this._cache.orthoLeft = undefined;
-        this._cache.orthoRight = undefined;
-        this._cache.orthoBottom = undefined;
-        this._cache.orthoTop = undefined;
-        this._cache.renderWidth = undefined;
-        this._cache.renderHeight = undefined;
-    };
-    /** @hidden */
-    Camera.prototype._updateCache = function (ignoreParentClass) {
-        if (!ignoreParentClass) {
-            _super.prototype._updateCache.call(this);
-        }
-        this._cache.position.copyFrom(this.position);
-        this._cache.upVector.copyFrom(this.upVector);
-    };
-    /** @hidden */
-    Camera.prototype._isSynchronized = function () {
-        return this._isSynchronizedViewMatrix() && this._isSynchronizedProjectionMatrix();
-    };
-    /** @hidden */
-    Camera.prototype._isSynchronizedViewMatrix = function () {
-        if (!_super.prototype._isSynchronized.call(this)) {
-            return false;
-        }
-        return this._cache.position.equals(this.position)
-            && this._cache.upVector.equals(this.upVector)
-            && this.isSynchronizedWithParent();
-    };
-    /** @hidden */
-    Camera.prototype._isSynchronizedProjectionMatrix = function () {
-        var check = this._cache.mode === this.mode
-            && this._cache.minZ === this.minZ
-            && this._cache.maxZ === this.maxZ;
-        if (!check) {
-            return false;
-        }
-        var engine = this.getEngine();
-        if (this.mode === Camera.PERSPECTIVE_CAMERA) {
-            check = this._cache.fov === this.fov
-                && this._cache.fovMode === this.fovMode
-                && this._cache.aspectRatio === engine.getAspectRatio(this)
-                && this._cache.projectionPlaneTilt === this.projectionPlaneTilt;
-        }
-        else {
-            check = this._cache.orthoLeft === this.orthoLeft
-                && this._cache.orthoRight === this.orthoRight
-                && this._cache.orthoBottom === this.orthoBottom
-                && this._cache.orthoTop === this.orthoTop
-                && this._cache.renderWidth === engine.getRenderWidth()
-                && this._cache.renderHeight === engine.getRenderHeight();
-        }
-        return check;
-    };
-    /**
-     * Attach the input controls to a specific dom element to get the input from.
-     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
-     * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
-     */
-    Camera.prototype.attachControl = function (ignored, noPreventDefault) {
-    };
-    /**
-     * Detach the current controls from the specified dom element.
-     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
-     */
-    Camera.prototype.detachControl = function (ignored) {
-    };
-    /**
-     * Update the camera state according to the different inputs gathered during the frame.
-     */
-    Camera.prototype.update = function () {
-        this._checkInputs();
-        if (this.cameraRigMode !== Camera.RIG_MODE_NONE) {
-            this._updateRigCameras();
-        }
-    };
-    /** @hidden */
-    Camera.prototype._checkInputs = function () {
-        this.onAfterCheckInputsObservable.notifyObservers(this);
-    };
-    Object.defineProperty(Camera.prototype, "rigCameras", {
-        /** @hidden */
-        get: function () {
-            return this._rigCameras;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(Camera.prototype, "rigPostProcess", {
-        /**
-         * Gets the post process used by the rig cameras
-         */
-        get: function () {
-            return this._rigPostProcess;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    /**
-     * Internal, gets the first post process.
-     * @returns the first post process to be run on this camera.
-     */
-    Camera.prototype._getFirstPostProcess = function () {
-        for (var ppIndex = 0; ppIndex < this._postProcesses.length; ppIndex++) {
-            if (this._postProcesses[ppIndex] !== null) {
-                return this._postProcesses[ppIndex];
-            }
-        }
-        return null;
-    };
-    Camera.prototype._cascadePostProcessesToRigCams = function () {
-        // invalidate framebuffer
-        var firstPostProcess = this._getFirstPostProcess();
-        if (firstPostProcess) {
-            firstPostProcess.markTextureDirty();
-        }
-        // glue the rigPostProcess to the end of the user postprocesses & assign to each sub-camera
-        for (var i = 0, len = this._rigCameras.length; i < len; i++) {
-            var cam = this._rigCameras[i];
-            var rigPostProcess = cam._rigPostProcess;
-            // for VR rig, there does not have to be a post process
-            if (rigPostProcess) {
-                var isPass = rigPostProcess.getEffectName() === "pass";
-                if (isPass) {
-                    // any rig which has a PassPostProcess for rig[0], cannot be isIntermediate when there are also user postProcesses
-                    cam.isIntermediate = this._postProcesses.length === 0;
-                }
-                cam._postProcesses = this._postProcesses.slice(0).concat(rigPostProcess);
-                rigPostProcess.markTextureDirty();
-            }
-            else {
-                cam._postProcesses = this._postProcesses.slice(0);
-            }
-        }
-    };
-    /**
-     * Attach a post process to the camera.
-     * @see https://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
-     * @param postProcess The post process to attach to the camera
-     * @param insertAt The position of the post process in case several of them are in use in the scene
-     * @returns the position the post process has been inserted at
-     */
-    Camera.prototype.attachPostProcess = function (postProcess, insertAt) {
-        if (insertAt === void 0) { insertAt = null; }
-        if (!postProcess.isReusable() && this._postProcesses.indexOf(postProcess) > -1) {
-            Logger.Error("You're trying to reuse a post process not defined as reusable.");
-            return 0;
-        }
-        if (insertAt == null || insertAt < 0) {
-            this._postProcesses.push(postProcess);
-        }
-        else if (this._postProcesses[insertAt] === null) {
-            this._postProcesses[insertAt] = postProcess;
-        }
-        else {
-            this._postProcesses.splice(insertAt, 0, postProcess);
-        }
-        this._cascadePostProcessesToRigCams(); // also ensures framebuffer invalidated
-        // Update prePass
-        if (this._scene.prePassRenderer) {
-            this._scene.prePassRenderer.markAsDirty();
-        }
-        return this._postProcesses.indexOf(postProcess);
-    };
-    /**
-     * Detach a post process to the camera.
-     * @see https://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
-     * @param postProcess The post process to detach from the camera
-     */
-    Camera.prototype.detachPostProcess = function (postProcess) {
-        var idx = this._postProcesses.indexOf(postProcess);
-        if (idx !== -1) {
-            this._postProcesses[idx] = null;
-        }
-        // Update prePass
-        if (this._scene.prePassRenderer) {
-            this._scene.prePassRenderer.markAsDirty();
-        }
-        this._cascadePostProcessesToRigCams(); // also ensures framebuffer invalidated
-    };
-    /**
-     * Gets the current world matrix of the camera
-     */
-    Camera.prototype.getWorldMatrix = function () {
-        if (this._isSynchronizedViewMatrix()) {
-            return this._worldMatrix;
-        }
-        // Getting the the view matrix will also compute the world matrix.
-        this.getViewMatrix();
-        return this._worldMatrix;
-    };
-    /** @hidden */
-    Camera.prototype._getViewMatrix = function () {
-        return Matrix.Identity();
-    };
-    /**
-     * Gets the current view matrix of the camera.
-     * @param force forces the camera to recompute the matrix without looking at the cached state
-     * @returns the view matrix
-     */
-    Camera.prototype.getViewMatrix = function (force) {
-        if (!force && this._isSynchronizedViewMatrix()) {
-            return this._computedViewMatrix;
-        }
-        this.updateCache();
-        this._computedViewMatrix = this._getViewMatrix();
-        this._currentRenderId = this.getScene().getRenderId();
-        this._childUpdateId++;
-        this._refreshFrustumPlanes = true;
-        if (this._cameraRigParams && this._cameraRigParams.vrPreViewMatrix) {
-            this._computedViewMatrix.multiplyToRef(this._cameraRigParams.vrPreViewMatrix, this._computedViewMatrix);
-        }
-        // Notify parent camera if rig camera is changed
-        if (this.parent && this.parent.onViewMatrixChangedObservable) {
-            this.parent.onViewMatrixChangedObservable.notifyObservers(this.parent);
-        }
-        this.onViewMatrixChangedObservable.notifyObservers(this);
-        this._computedViewMatrix.invertToRef(this._worldMatrix);
-        return this._computedViewMatrix;
-    };
-    /**
-     * Freeze the projection matrix.
-     * It will prevent the cache check of the camera projection compute and can speed up perf
-     * if no parameter of the camera are meant to change
-     * @param projection Defines manually a projection if necessary
-     */
-    Camera.prototype.freezeProjectionMatrix = function (projection) {
-        this._doNotComputeProjectionMatrix = true;
-        if (projection !== undefined) {
-            this._projectionMatrix = projection;
-        }
-    };
-    /**
-     * Unfreeze the projection matrix if it has previously been freezed by freezeProjectionMatrix.
-     */
-    Camera.prototype.unfreezeProjectionMatrix = function () {
-        this._doNotComputeProjectionMatrix = false;
-    };
-    /**
-     * Gets the current projection matrix of the camera.
-     * @param force forces the camera to recompute the matrix without looking at the cached state
-     * @returns the projection matrix
-     */
-    Camera.prototype.getProjectionMatrix = function (force) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
-        if (this._doNotComputeProjectionMatrix || (!force && this._isSynchronizedProjectionMatrix())) {
-            return this._projectionMatrix;
-        }
-        // Cache
-        this._cache.mode = this.mode;
-        this._cache.minZ = this.minZ;
-        this._cache.maxZ = this.maxZ;
-        // Matrix
-        this._refreshFrustumPlanes = true;
-        var engine = this.getEngine();
-        var scene = this.getScene();
-        if (this.mode === Camera.PERSPECTIVE_CAMERA) {
-            this._cache.fov = this.fov;
-            this._cache.fovMode = this.fovMode;
-            this._cache.aspectRatio = engine.getAspectRatio(this);
-            this._cache.projectionPlaneTilt = this.projectionPlaneTilt;
-            if (this.minZ <= 0) {
-                this.minZ = 0.1;
-            }
-            var reverseDepth = engine.useReverseDepthBuffer;
-            var getProjectionMatrix = void 0;
-            if (scene.useRightHandedSystem) {
-                getProjectionMatrix = Matrix.PerspectiveFovRHToRef;
-            }
-            else {
-                getProjectionMatrix = Matrix.PerspectiveFovLHToRef;
-            }
-            getProjectionMatrix(this.fov, engine.getAspectRatio(this), reverseDepth ? this.maxZ : this.minZ, reverseDepth ? this.minZ : this.maxZ, this._projectionMatrix, this.fovMode === Camera.FOVMODE_VERTICAL_FIXED, engine.isNDCHalfZRange, this.projectionPlaneTilt);
-        }
-        else {
-            var halfWidth = engine.getRenderWidth() / 2.0;
-            var halfHeight = engine.getRenderHeight() / 2.0;
-            if (scene.useRightHandedSystem) {
-                Matrix.OrthoOffCenterRHToRef((_a = this.orthoLeft) !== null && _a !== void 0 ? _a : -halfWidth, (_b = this.orthoRight) !== null && _b !== void 0 ? _b : halfWidth, (_c = this.orthoBottom) !== null && _c !== void 0 ? _c : -halfHeight, (_d = this.orthoTop) !== null && _d !== void 0 ? _d : halfHeight, this.minZ, this.maxZ, this._projectionMatrix, engine.isNDCHalfZRange);
-            }
-            else {
-                Matrix.OrthoOffCenterLHToRef((_e = this.orthoLeft) !== null && _e !== void 0 ? _e : -halfWidth, (_f = this.orthoRight) !== null && _f !== void 0 ? _f : halfWidth, (_g = this.orthoBottom) !== null && _g !== void 0 ? _g : -halfHeight, (_h = this.orthoTop) !== null && _h !== void 0 ? _h : halfHeight, this.minZ, this.maxZ, this._projectionMatrix, engine.isNDCHalfZRange);
-            }
-            this._cache.orthoLeft = this.orthoLeft;
-            this._cache.orthoRight = this.orthoRight;
-            this._cache.orthoBottom = this.orthoBottom;
-            this._cache.orthoTop = this.orthoTop;
-            this._cache.renderWidth = engine.getRenderWidth();
-            this._cache.renderHeight = engine.getRenderHeight();
-        }
-        this.onProjectionMatrixChangedObservable.notifyObservers(this);
-        return this._projectionMatrix;
-    };
-    /**
-     * Gets the transformation matrix (ie. the multiplication of view by projection matrices)
-     * @returns a Matrix
-     */
-    Camera.prototype.getTransformationMatrix = function () {
-        this._computedViewMatrix.multiplyToRef(this._projectionMatrix, this._transformMatrix);
-        return this._transformMatrix;
-    };
-    Camera.prototype._updateFrustumPlanes = function () {
-        if (!this._refreshFrustumPlanes) {
-            return;
-        }
-        this.getTransformationMatrix();
-        if (!this._frustumPlanes) {
-            this._frustumPlanes = Frustum.GetPlanes(this._transformMatrix);
-        }
-        else {
-            Frustum.GetPlanesToRef(this._transformMatrix, this._frustumPlanes);
-        }
-        this._refreshFrustumPlanes = false;
-    };
-    /**
-     * Checks if a cullable object (mesh...) is in the camera frustum
-     * This checks the bounding box center. See isCompletelyInFrustum for a full bounding check
-     * @param target The object to check
-     * @param checkRigCameras If the rig cameras should be checked (eg. with webVR camera both eyes should be checked) (Default: false)
-     * @returns true if the object is in frustum otherwise false
-     */
-    Camera.prototype.isInFrustum = function (target, checkRigCameras) {
-        if (checkRigCameras === void 0) { checkRigCameras = false; }
-        this._updateFrustumPlanes();
-        if (checkRigCameras && this.rigCameras.length > 0) {
-            var result = false;
-            this.rigCameras.forEach(function (cam) {
-                cam._updateFrustumPlanes();
-                result = result || target.isInFrustum(cam._frustumPlanes);
-            });
-            return result;
-        }
-        else {
-            return target.isInFrustum(this._frustumPlanes);
-        }
-    };
-    /**
-     * Checks if a cullable object (mesh...) is in the camera frustum
-     * Unlike isInFrustum this checks the full bounding box
-     * @param target The object to check
-     * @returns true if the object is in frustum otherwise false
-     */
-    Camera.prototype.isCompletelyInFrustum = function (target) {
-        this._updateFrustumPlanes();
-        return target.isCompletelyInFrustum(this._frustumPlanes);
-    };
-    /**
-     * Gets a ray in the forward direction from the camera.
-     * @param length Defines the length of the ray to create
-     * @param transform Defines the transform to apply to the ray, by default the world matrix is used to create a workd space ray
-     * @param origin Defines the start point of the ray which defaults to the camera position
-     * @returns the forward ray
-     */
-    Camera.prototype.getForwardRay = function (length, transform, origin) {
-        throw _DevTools.WarnImport("Ray");
-    };
-    /**
-     * Gets a ray in the forward direction from the camera.
-     * @param refRay the ray to (re)use when setting the values
-     * @param length Defines the length of the ray to create
-     * @param transform Defines the transform to apply to the ray, by default the world matrx is used to create a workd space ray
-     * @param origin Defines the start point of the ray which defaults to the camera position
-     * @returns the forward ray
-     */
-    Camera.prototype.getForwardRayToRef = function (refRay, length, transform, origin) {
-        throw _DevTools.WarnImport("Ray");
-    };
-    /**
-     * Releases resources associated with this node.
-     * @param doNotRecurse Set to true to not recurse into each children (recurse into each children by default)
-     * @param disposeMaterialAndTextures Set to true to also dispose referenced materials and textures (false by default)
-     */
-    Camera.prototype.dispose = function (doNotRecurse, disposeMaterialAndTextures) {
-        if (disposeMaterialAndTextures === void 0) { disposeMaterialAndTextures = false; }
-        // Observables
-        this.onViewMatrixChangedObservable.clear();
-        this.onProjectionMatrixChangedObservable.clear();
-        this.onAfterCheckInputsObservable.clear();
-        this.onRestoreStateObservable.clear();
-        // Inputs
-        if (this.inputs) {
-            this.inputs.clear();
-        }
-        // Animations
-        this.getScene().stopAnimation(this);
-        // Remove from scene
-        this.getScene().removeCamera(this);
-        while (this._rigCameras.length > 0) {
-            var camera = this._rigCameras.pop();
-            if (camera) {
-                camera.dispose();
-            }
-        }
-        if (this._parentContainer) {
-            var index = this._parentContainer.cameras.indexOf(this);
-            if (index > -1) {
-                this._parentContainer.cameras.splice(index, 1);
-            }
-            this._parentContainer = null;
-        }
-        // Postprocesses
-        if (this._rigPostProcess) {
-            this._rigPostProcess.dispose(this);
-            this._rigPostProcess = null;
-            this._postProcesses = [];
-        }
-        else if (this.cameraRigMode !== Camera.RIG_MODE_NONE) {
-            this._rigPostProcess = null;
-            this._postProcesses = [];
-        }
-        else {
-            var i = this._postProcesses.length;
-            while (--i >= 0) {
-                var postProcess = this._postProcesses[i];
-                if (postProcess) {
-                    postProcess.dispose(this);
-                }
-            }
-        }
-        // Render targets
-        var i = this.customRenderTargets.length;
-        while (--i >= 0) {
-            this.customRenderTargets[i].dispose();
-        }
-        this.customRenderTargets = [];
-        // Active Meshes
-        this._activeMeshes.dispose();
-        _super.prototype.dispose.call(this, doNotRecurse, disposeMaterialAndTextures);
-    };
-    Object.defineProperty(Camera.prototype, "isLeftCamera", {
-        /**
-         * Gets the left camera of a rig setup in case of Rigged Camera
-         */
-        get: function () {
-            return this._isLeftCamera;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(Camera.prototype, "isRightCamera", {
-        /**
-         * Gets the right camera of a rig setup in case of Rigged Camera
-         */
-        get: function () {
-            return this._isRightCamera;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(Camera.prototype, "leftCamera", {
-        /**
-         * Gets the left camera of a rig setup in case of Rigged Camera
-         */
-        get: function () {
-            if (this._rigCameras.length < 1) {
-                return null;
-            }
-            return this._rigCameras[0];
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(Camera.prototype, "rightCamera", {
-        /**
-         * Gets the right camera of a rig setup in case of Rigged Camera
-         */
-        get: function () {
-            if (this._rigCameras.length < 2) {
-                return null;
-            }
-            return this._rigCameras[1];
-        },
-        enumerable: false,
-        configurable: true
-    });
-    /**
-     * Gets the left camera target of a rig setup in case of Rigged Camera
-     * @returns the target position
-     */
-    Camera.prototype.getLeftTarget = function () {
-        if (this._rigCameras.length < 1) {
-            return null;
-        }
-        return this._rigCameras[0].getTarget();
-    };
-    /**
-     * Gets the right camera target of a rig setup in case of Rigged Camera
-     * @returns the target position
-     */
-    Camera.prototype.getRightTarget = function () {
-        if (this._rigCameras.length < 2) {
-            return null;
-        }
-        return this._rigCameras[1].getTarget();
-    };
-    /**
-     * @hidden
-     */
-    Camera.prototype.setCameraRigMode = function (mode, rigParams) {
-        if (this.cameraRigMode === mode) {
-            return;
-        }
-        while (this._rigCameras.length > 0) {
-            var camera = this._rigCameras.pop();
-            if (camera) {
-                camera.dispose();
-            }
-        }
-        this.cameraRigMode = mode;
-        this._cameraRigParams = {};
-        //we have to implement stereo camera calcultating left and right viewpoints from interaxialDistance and target,
-        //not from a given angle as it is now, but until that complete code rewriting provisional stereoHalfAngle value is introduced
-        this._cameraRigParams.interaxialDistance = rigParams.interaxialDistance || 0.0637;
-        this._cameraRigParams.stereoHalfAngle = Tools.ToRadians(this._cameraRigParams.interaxialDistance / 0.0637);
-        // create the rig cameras, unless none
-        if (this.cameraRigMode !== Camera.RIG_MODE_NONE) {
-            var leftCamera = this.createRigCamera(this.name + "_L", 0);
-            if (leftCamera) {
-                leftCamera._isLeftCamera = true;
-            }
-            var rightCamera = this.createRigCamera(this.name + "_R", 1);
-            if (rightCamera) {
-                rightCamera._isRightCamera = true;
-            }
-            if (leftCamera && rightCamera) {
-                this._rigCameras.push(leftCamera);
-                this._rigCameras.push(rightCamera);
-            }
-        }
-        this._setRigMode(rigParams);
-        this._cascadePostProcessesToRigCams();
-        this.update();
-    };
-    Camera.prototype._setRigMode = function (rigParams) {
-        // no-op
-    };
-    /** @hidden */
-    Camera.prototype._getVRProjectionMatrix = function () {
-        Matrix.PerspectiveFovLHToRef(this._cameraRigParams.vrMetrics.aspectRatioFov, this._cameraRigParams.vrMetrics.aspectRatio, this.minZ, this.maxZ, this._cameraRigParams.vrWorkMatrix, true, this.getEngine().isNDCHalfZRange);
-        this._cameraRigParams.vrWorkMatrix.multiplyToRef(this._cameraRigParams.vrHMatrix, this._projectionMatrix);
-        return this._projectionMatrix;
-    };
-    Camera.prototype._updateCameraRotationMatrix = function () {
-        //Here for WebVR
-    };
-    Camera.prototype._updateWebVRCameraRotationMatrix = function () {
-        //Here for WebVR
-    };
-    /**
-     * This function MUST be overwritten by the different WebVR cameras available.
-     * The context in which it is running is the RIG camera. So 'this' is the TargetCamera, left or right.
-     * @hidden
-     */
-    Camera.prototype._getWebVRProjectionMatrix = function () {
-        return Matrix.Identity();
-    };
-    /**
-     * This function MUST be overwritten by the different WebVR cameras available.
-     * The context in which it is running is the RIG camera. So 'this' is the TargetCamera, left or right.
-     * @hidden
-     */
-    Camera.prototype._getWebVRViewMatrix = function () {
-        return Matrix.Identity();
-    };
-    /** @hidden */
-    Camera.prototype.setCameraRigParameter = function (name, value) {
-        if (!this._cameraRigParams) {
-            this._cameraRigParams = {};
-        }
-        this._cameraRigParams[name] = value;
-        //provisionnally:
-        if (name === "interaxialDistance") {
-            this._cameraRigParams.stereoHalfAngle = Tools.ToRadians(value / 0.0637);
-        }
-    };
-    /**
-     * needs to be overridden by children so sub has required properties to be copied
-     * @hidden
-     */
-    Camera.prototype.createRigCamera = function (name, cameraIndex) {
-        return null;
-    };
-    /**
-     * May need to be overridden by children
-     * @hidden
-     */
-    Camera.prototype._updateRigCameras = function () {
-        for (var i = 0; i < this._rigCameras.length; i++) {
-            this._rigCameras[i].minZ = this.minZ;
-            this._rigCameras[i].maxZ = this.maxZ;
-            this._rigCameras[i].fov = this.fov;
-            this._rigCameras[i].upVector.copyFrom(this.upVector);
-        }
-        // only update viewport when ANAGLYPH
-        if (this.cameraRigMode === Camera.RIG_MODE_STEREOSCOPIC_ANAGLYPH) {
-            this._rigCameras[0].viewport = this._rigCameras[1].viewport = this.viewport;
-        }
-    };
-    /** @hidden */
-    Camera.prototype._setupInputs = function () {
-    };
-    /**
-     * Serialiaze the camera setup to a json representation
-     * @returns the JSON representation
-     */
-    Camera.prototype.serialize = function () {
-        var serializationObject = SerializationHelper.Serialize(this);
-        // Type
-        serializationObject.type = this.getClassName();
-        // Parent
-        if (this.parent) {
-            serializationObject.parentId = this.parent.id;
-        }
-        if (this.inputs) {
-            this.inputs.serialize(serializationObject);
-        }
-        // Animations
-        SerializationHelper.AppendSerializedAnimations(this, serializationObject);
-        serializationObject.ranges = this.serializeAnimationRanges();
-        return serializationObject;
-    };
-    /**
-     * Clones the current camera.
-     * @param name The cloned camera name
-     * @returns the cloned camera
-     */
-    Camera.prototype.clone = function (name) {
-        var camera = SerializationHelper.Clone(Camera.GetConstructorFromName(this.getClassName(), name, this.getScene(), this.interaxialDistance, this.isStereoscopicSideBySide), this);
-        camera.name = name;
-        this.onClonedObservable.notifyObservers(camera);
-        return camera;
-    };
-    /**
-     * Gets the direction of the camera relative to a given local axis.
-     * @param localAxis Defines the reference axis to provide a relative direction.
-     * @return the direction
-     */
-    Camera.prototype.getDirection = function (localAxis) {
-        var result = Vector3.Zero();
-        this.getDirectionToRef(localAxis, result);
-        return result;
-    };
-    Object.defineProperty(Camera.prototype, "absoluteRotation", {
-        /**
-         * Returns the current camera absolute rotation
-         */
-        get: function () {
-            this.getWorldMatrix().decompose(undefined, this._absoluteRotation);
-            return this._absoluteRotation;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    /**
-     * Gets the direction of the camera relative to a given local axis into a passed vector.
-     * @param localAxis Defines the reference axis to provide a relative direction.
-     * @param result Defines the vector to store the result in
-     */
-    Camera.prototype.getDirectionToRef = function (localAxis, result) {
-        Vector3.TransformNormalToRef(localAxis, this.getWorldMatrix(), result);
-    };
-    /**
-     * Gets a camera constructor for a given camera type
-     * @param type The type of the camera to construct (should be equal to one of the camera class name)
-     * @param name The name of the camera the result will be able to instantiate
-     * @param scene The scene the result will construct the camera in
-     * @param interaxial_distance In case of stereoscopic setup, the distance between both eyes
-     * @param isStereoscopicSideBySide In case of stereoscopic setup, should the sereo be side b side
-     * @returns a factory method to construct the camera
-     */
-    Camera.GetConstructorFromName = function (type, name, scene, interaxial_distance, isStereoscopicSideBySide) {
-        if (interaxial_distance === void 0) { interaxial_distance = 0; }
-        if (isStereoscopicSideBySide === void 0) { isStereoscopicSideBySide = true; }
-        var constructorFunc = Node.Construct(type, name, scene, {
-            interaxial_distance: interaxial_distance,
-            isStereoscopicSideBySide: isStereoscopicSideBySide
-        });
-        if (constructorFunc) {
-            return constructorFunc;
-        }
-        // Default to universal camera
-        return function () { return Camera._createDefaultParsedCamera(name, scene); };
-    };
-    /**
-     * Compute the world  matrix of the camera.
-     * @returns the camera world matrix
-     */
-    Camera.prototype.computeWorldMatrix = function () {
-        return this.getWorldMatrix();
-    };
-    /**
-     * Parse a JSON and creates the camera from the parsed information
-     * @param parsedCamera The JSON to parse
-     * @param scene The scene to instantiate the camera in
-     * @returns the newly constructed camera
-     */
-    Camera.Parse = function (parsedCamera, scene) {
-        var type = parsedCamera.type;
-        var construct = Camera.GetConstructorFromName(type, parsedCamera.name, scene, parsedCamera.interaxial_distance, parsedCamera.isStereoscopicSideBySide);
-        var camera = SerializationHelper.Parse(construct, parsedCamera, scene);
-        // Parent
-        if (parsedCamera.parentId) {
-            camera._waitingParentId = parsedCamera.parentId;
-        }
-        //If camera has an input manager, let it parse inputs settings
-        if (camera.inputs) {
-            camera.inputs.parse(parsedCamera);
-            camera._setupInputs();
-        }
-        if (parsedCamera.upVector) {
-            camera.upVector = Vector3.FromArray(parsedCamera.upVector); // need to force the upVector
-        }
-        if (camera.setPosition) { // need to force position
-            camera.position.copyFromFloats(0, 0, 0);
-            camera.setPosition(Vector3.FromArray(parsedCamera.position));
-        }
-        // Target
-        if (parsedCamera.target) {
-            if (camera.setTarget) {
-                camera.setTarget(Vector3.FromArray(parsedCamera.target));
-            }
-        }
-        // Apply 3d rig, when found
-        if (parsedCamera.cameraRigMode) {
-            var rigParams = (parsedCamera.interaxial_distance) ? { interaxialDistance: parsedCamera.interaxial_distance } : {};
-            camera.setCameraRigMode(parsedCamera.cameraRigMode, rigParams);
-        }
-        // Animations
-        if (parsedCamera.animations) {
-            for (var animationIndex = 0; animationIndex < parsedCamera.animations.length; animationIndex++) {
-                var parsedAnimation = parsedCamera.animations[animationIndex];
-                var internalClass = _TypeStore.GetClass("BABYLON.Animation");
-                if (internalClass) {
-                    camera.animations.push(internalClass.Parse(parsedAnimation));
-                }
-            }
-            Node.ParseAnimationRanges(camera, parsedCamera, scene);
-        }
-        if (parsedCamera.autoAnimate) {
-            scene.beginAnimation(camera, parsedCamera.autoAnimateFrom, parsedCamera.autoAnimateTo, parsedCamera.autoAnimateLoop, parsedCamera.autoAnimateSpeed || 1.0);
-        }
-        return camera;
-    };
-    /** @hidden */
-    Camera._createDefaultParsedCamera = function (name, scene) {
-        throw _DevTools.WarnImport("UniversalCamera");
-    };
-    /**
-     * This is the default projection mode used by the cameras.
-     * It helps recreating a feeling of perspective and better appreciate depth.
-     * This is the best way to simulate real life cameras.
-     */
-    Camera.PERSPECTIVE_CAMERA = 0;
-    /**
-     * This helps creating camera with an orthographic mode.
-     * Orthographic is commonly used in engineering as a means to produce object specifications that communicate dimensions unambiguously, each line of 1 unit length (cm, meter..whatever) will appear to have the same length everywhere on the drawing. This allows the drafter to dimension only a subset of lines and let the reader know that other lines of that length on the drawing are also that length in reality. Every parallel line in the drawing is also parallel in the object.
-     */
-    Camera.ORTHOGRAPHIC_CAMERA = 1;
-    /**
-     * This is the default FOV mode for perspective cameras.
-     * This setting aligns the upper and lower bounds of the viewport to the upper and lower bounds of the camera frustum.
-     */
-    Camera.FOVMODE_VERTICAL_FIXED = 0;
-    /**
-     * This setting aligns the left and right bounds of the viewport to the left and right bounds of the camera frustum.
-     */
-    Camera.FOVMODE_HORIZONTAL_FIXED = 1;
-    /**
-     * This specifies there is no need for a camera rig.
-     * Basically only one eye is rendered corresponding to the camera.
-     */
-    Camera.RIG_MODE_NONE = 0;
-    /**
-     * Simulates a camera Rig with one blue eye and one red eye.
-     * This can be use with 3d blue and red glasses.
-     */
-    Camera.RIG_MODE_STEREOSCOPIC_ANAGLYPH = 10;
-    /**
-     * Defines that both eyes of the camera will be rendered side by side with a parallel target.
-     */
-    Camera.RIG_MODE_STEREOSCOPIC_SIDEBYSIDE_PARALLEL = 11;
-    /**
-     * Defines that both eyes of the camera will be rendered side by side with a none parallel target.
-     */
-    Camera.RIG_MODE_STEREOSCOPIC_SIDEBYSIDE_CROSSEYED = 12;
-    /**
-     * Defines that both eyes of the camera will be rendered over under each other.
-     */
-    Camera.RIG_MODE_STEREOSCOPIC_OVERUNDER = 13;
-    /**
-     * Defines that both eyes of the camera will be rendered on successive lines interlaced for passive 3d monitors.
-     */
-    Camera.RIG_MODE_STEREOSCOPIC_INTERLACED = 14;
-    /**
-     * Defines that both eyes of the camera should be renderered in a VR mode (carbox).
-     */
-    Camera.RIG_MODE_VR = 20;
-    /**
-     * Defines that both eyes of the camera should be renderered in a VR mode (webVR).
-     */
-    Camera.RIG_MODE_WEBVR = 21;
-    /**
-     * Custom rig mode allowing rig cameras to be populated manually with any number of cameras
-     */
-    Camera.RIG_MODE_CUSTOM = 22;
-    /**
-     * Defines if by default attaching controls should prevent the default javascript event to continue.
-     */
-    Camera.ForceAttachControlToAlwaysPreventDefault = false;
-    __decorate([
-        serializeAsVector3("position")
-    ], Camera.prototype, "_position", void 0);
-    __decorate([
-        serializeAsVector3("upVector")
-    ], Camera.prototype, "_upVector", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "orthoLeft", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "orthoRight", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "orthoBottom", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "orthoTop", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "fov", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "projectionPlaneTilt", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "minZ", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "maxZ", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "inertia", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "mode", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "layerMask", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "fovMode", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "cameraRigMode", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "interaxialDistance", void 0);
-    __decorate([
-        serialize()
-    ], Camera.prototype, "isStereoscopicSideBySide", void 0);
-    return Camera;
-}(Node));
-
-/**
  * Class representing a ray with position and direction
  */
 var Ray = /** @class */ (function () {
@@ -65129,7 +65672,7 @@ var TargetCamera = /** @class */ (function (_super) {
             this._rotateUpVectorWithCameraRotationMatrix();
             this._cachedQuaternionRotationZ = this.rotationQuaternion.z;
         }
-        else if (this._cachedRotationZ != this.rotation.z) {
+        else if (this._cachedRotationZ !== this.rotation.z) {
             this._rotateUpVectorWithCameraRotationMatrix();
             this._cachedRotationZ = this.rotation.z;
         }
@@ -65738,7 +66281,6 @@ var FreeCameraMouseInput = /** @class */ (function () {
          */
         this._allowCameraRotation = true;
         this._currentActiveButton = -1;
-        this._usingSafari = Tools.IsSafari();
     }
     /**
      * Attach the input controls to a specific dom element to get the input from.
@@ -65752,19 +66294,20 @@ var FreeCameraMouseInput = /** @class */ (function () {
         if (!this._pointerInput) {
             this._pointerInput = function (p) {
                 var evt = p.event;
+                var isTouch = evt.pointerType === "touch";
                 if (engine.isInVRExclusivePointerMode) {
                     return;
                 }
-                if (!_this.touchEnabled && evt.pointerType === "touch") {
+                if (!_this.touchEnabled && isTouch) {
                     return;
                 }
                 if (p.type !== PointerEventTypes.POINTERMOVE && _this.buttons.indexOf(evt.button) === -1) {
                     return;
                 }
                 var srcElement = (evt.srcElement || evt.target);
-                if (p.type === PointerEventTypes.POINTERDOWN && srcElement) {
+                if (p.type === PointerEventTypes.POINTERDOWN && (_this._currentActiveButton === -1 || isTouch)) {
                     try {
-                        srcElement.setPointerCapture(evt.pointerId);
+                        srcElement === null || srcElement === void 0 ? void 0 : srcElement.setPointerCapture(evt.pointerId);
                     }
                     catch (e) {
                         //Nothing to do with the error. Execution will continue.
@@ -65785,9 +66328,9 @@ var FreeCameraMouseInput = /** @class */ (function () {
                         _this._onMouseMove(p.event);
                     }
                 }
-                else if (srcElement && (p.type === PointerEventTypes.POINTERUP || (p.type === PointerEventTypes.POINTERMOVE && p.event.button === _this._currentActiveButton && _this._currentActiveButton !== -1 && !_this._usingSafari))) {
+                else if (p.type === PointerEventTypes.POINTERUP && (_this._currentActiveButton === evt.button || isTouch)) {
                     try {
-                        srcElement.releasePointerCapture(evt.pointerId);
+                        srcElement === null || srcElement === void 0 ? void 0 : srcElement.releasePointerCapture(evt.pointerId);
                     }
                     catch (e) {
                         //Nothing to do with the error.
@@ -65799,31 +66342,30 @@ var FreeCameraMouseInput = /** @class */ (function () {
                     }
                 }
                 else if (p.type === PointerEventTypes.POINTERMOVE) {
-                    if (!_this.previousPosition) {
-                        if (engine.isPointerLock && _this._onMouseMove) {
-                            _this._onMouseMove(p.event);
+                    if (engine.isPointerLock && _this._onMouseMove) {
+                        _this._onMouseMove(p.event);
+                    }
+                    else if (_this.previousPosition) {
+                        var offsetX = evt.clientX - _this.previousPosition.x;
+                        var offsetY = evt.clientY - _this.previousPosition.y;
+                        if (_this.camera.getScene().useRightHandedSystem) {
+                            offsetX *= -1;
                         }
-                        return;
-                    }
-                    var offsetX = evt.clientX - _this.previousPosition.x;
-                    var offsetY = evt.clientY - _this.previousPosition.y;
-                    if (_this.camera.getScene().useRightHandedSystem) {
-                        offsetX *= -1;
-                    }
-                    if (_this.camera.parent && _this.camera.parent._getWorldMatrixDeterminant() < 0) {
-                        offsetX *= -1;
-                    }
-                    if (_this._allowCameraRotation) {
-                        _this.camera.cameraRotation.y += offsetX / _this.angularSensibility;
-                        _this.camera.cameraRotation.x += offsetY / _this.angularSensibility;
-                    }
-                    _this.onPointerMovedObservable.notifyObservers({ offsetX: offsetX, offsetY: offsetY });
-                    _this.previousPosition = {
-                        x: evt.clientX,
-                        y: evt.clientY,
-                    };
-                    if (!noPreventDefault) {
-                        evt.preventDefault();
+                        if (_this.camera.parent && _this.camera.parent._getWorldMatrixDeterminant() < 0) {
+                            offsetX *= -1;
+                        }
+                        if (_this._allowCameraRotation) {
+                            _this.camera.cameraRotation.y += offsetX / _this.angularSensibility;
+                            _this.camera.cameraRotation.x += offsetY / _this.angularSensibility;
+                        }
+                        _this.onPointerMovedObservable.notifyObservers({ offsetX: offsetX, offsetY: offsetY });
+                        _this.previousPosition = {
+                            x: evt.clientX,
+                            y: evt.clientY,
+                        };
+                        if (!noPreventDefault) {
+                            evt.preventDefault();
+                        }
                     }
                 }
             };
@@ -67243,16 +67785,23 @@ var PrePassConfiguration = /** @class */ (function () {
         if (scene.prePassRenderer && scene.prePassRenderer.enabled && scene.prePassRenderer.currentRTisSceneRT) {
             if (scene.prePassRenderer.getIndex(2) !== -1) {
                 if (!this.previousWorldMatrices[mesh.uniqueId]) {
-                    this.previousWorldMatrices[mesh.uniqueId] = Matrix.Identity();
+                    this.previousWorldMatrices[mesh.uniqueId] = world.clone();
                 }
                 if (!this.previousViewProjection) {
                     this.previousViewProjection = scene.getTransformMatrix().clone();
                     this.currentViewProjection = scene.getTransformMatrix().clone();
                 }
+                var engine = scene.getEngine();
                 if (this.currentViewProjection.updateFlag !== scene.getTransformMatrix().updateFlag) {
                     // First update of the prepass configuration for this rendering pass
+                    this._lastUpdateFrameId = engine.frameId;
                     this.previousViewProjection.copyFrom(this.currentViewProjection);
                     this.currentViewProjection.copyFrom(scene.getTransformMatrix());
+                }
+                else if (this._lastUpdateFrameId !== engine.frameId) {
+                    // The scene transformation did not change from the previous frame (so no camera motion), we must update previousViewProjection accordingly
+                    this._lastUpdateFrameId = engine.frameId;
+                    this.previousViewProjection.copyFrom(this.currentViewProjection);
                 }
                 effect.setMatrix("previousWorld", this.previousWorldMatrices[mesh.uniqueId]);
                 effect.setMatrix("previousViewProjection", this.previousViewProjection);
@@ -67269,18 +67818,22 @@ var PrePassConfiguration = /** @class */ (function () {
  */
 var PushMaterial = /** @class */ (function (_super) {
     __extends(PushMaterial, _super);
-    function PushMaterial(name, scene) {
+    function PushMaterial(name, scene, storeEffectOnSubMeshes) {
+        if (storeEffectOnSubMeshes === void 0) { storeEffectOnSubMeshes = true; }
         var _this = _super.call(this, name, scene) || this;
         _this._normalMatrix = new Matrix();
-        _this._storeEffectOnSubMeshes = true;
+        _this._storeEffectOnSubMeshes = storeEffectOnSubMeshes;
         return _this;
     }
     PushMaterial.prototype.getEffect = function () {
-        return this._activeEffect;
+        return this._storeEffectOnSubMeshes ? this._activeEffect : _super.prototype.getEffect.call(this);
     };
     PushMaterial.prototype.isReady = function (mesh, useInstances) {
         if (!mesh) {
             return false;
+        }
+        if (!this._storeEffectOnSubMeshes) {
+            return true;
         }
         if (!mesh.subMeshes || mesh.subMeshes.length === 0) {
             return true;
@@ -67288,7 +67841,7 @@ var PushMaterial = /** @class */ (function (_super) {
         return this.isReadyForSubMesh(mesh, mesh.subMeshes[0], useInstances);
     };
     PushMaterial.prototype._isReadyForSubMesh = function (subMesh) {
-        var defines = subMesh._materialDefines;
+        var defines = subMesh.materialDefines;
         if (!this.checkReadyOnEveryCall && subMesh.effect && defines) {
             if (defines._renderId === this.getScene().getRenderId()) {
                 return true;
@@ -67700,184 +68253,200 @@ var MaterialFlags = /** @class */ (function () {
     return MaterialFlags;
 }());
 
-var name$U = 'defaultFragmentDeclaration';
-var shader$U = "uniform vec4 vEyePosition;\nuniform vec4 vDiffuseColor;\n#ifdef SPECULARTERM\nuniform vec4 vSpecularColor;\n#endif\nuniform vec3 vEmissiveColor;\nuniform vec3 vAmbientColor;\nuniform float visibility;\n\n#ifdef DIFFUSE\nuniform vec2 vDiffuseInfos;\n#endif\n#ifdef AMBIENT\nuniform vec2 vAmbientInfos;\n#endif\n#ifdef OPACITY\nuniform vec2 vOpacityInfos;\n#endif\n#ifdef EMISSIVE\nuniform vec2 vEmissiveInfos;\n#endif\n#ifdef LIGHTMAP\nuniform vec2 vLightmapInfos;\n#endif\n#ifdef BUMP\nuniform vec3 vBumpInfos;\nuniform vec2 vTangentSpaceParams;\n#endif\n#ifdef ALPHATEST\nuniform float alphaCutOff;\n#endif\n#if defined(REFLECTIONMAP_SPHERICAL) || defined(REFLECTIONMAP_PROJECTION) || defined(REFRACTION)\nuniform mat4 view;\n#endif\n#ifdef REFRACTION\nuniform vec4 vRefractionInfos;\n#ifndef REFRACTIONMAP_3D\nuniform mat4 refractionMatrix;\n#endif\n#ifdef REFRACTIONFRESNEL\nuniform vec4 refractionLeftColor;\nuniform vec4 refractionRightColor;\n#endif\n#if defined(USE_LOCAL_REFRACTIONMAP_CUBIC) && defined(REFRACTIONMAP_3D)\nuniform vec3 vRefractionPosition;\nuniform vec3 vRefractionSize;\n#endif\n#endif\n#if defined(SPECULAR) && defined(SPECULARTERM)\nuniform vec2 vSpecularInfos;\n#endif\n#ifdef DIFFUSEFRESNEL\nuniform vec4 diffuseLeftColor;\nuniform vec4 diffuseRightColor;\n#endif\n#ifdef OPACITYFRESNEL\nuniform vec4 opacityParts;\n#endif\n#ifdef EMISSIVEFRESNEL\nuniform vec4 emissiveLeftColor;\nuniform vec4 emissiveRightColor;\n#endif\n\n#ifdef REFLECTION\nuniform vec2 vReflectionInfos;\n#if defined(REFLECTIONMAP_PLANAR) || defined(REFLECTIONMAP_CUBIC) || defined(REFLECTIONMAP_PROJECTION) || defined(REFLECTIONMAP_EQUIRECTANGULAR) || defined(REFLECTIONMAP_SPHERICAL) || defined(REFLECTIONMAP_SKYBOX)\nuniform mat4 reflectionMatrix;\n#endif\n#ifndef REFLECTIONMAP_SKYBOX\n#if defined(USE_LOCAL_REFLECTIONMAP_CUBIC) && defined(REFLECTIONMAP_CUBIC)\nuniform vec3 vReflectionPosition;\nuniform vec3 vReflectionSize;\n#endif\n#endif\n#ifdef REFLECTIONFRESNEL\nuniform vec4 reflectionLeftColor;\nuniform vec4 reflectionRightColor;\n#endif\n#endif\n#ifdef DETAIL\nuniform vec4 vDetailInfos;\n#endif";
+var name$Y = 'defaultFragmentDeclaration';
+var shader$Y = "uniform vec4 vEyePosition;\nuniform vec4 vDiffuseColor;\n#ifdef SPECULARTERM\nuniform vec4 vSpecularColor;\n#endif\nuniform vec3 vEmissiveColor;\nuniform vec3 vAmbientColor;\nuniform float visibility;\n\n#ifdef DIFFUSE\nuniform vec2 vDiffuseInfos;\n#endif\n#ifdef AMBIENT\nuniform vec2 vAmbientInfos;\n#endif\n#ifdef OPACITY\nuniform vec2 vOpacityInfos;\n#endif\n#ifdef EMISSIVE\nuniform vec2 vEmissiveInfos;\n#endif\n#ifdef LIGHTMAP\nuniform vec2 vLightmapInfos;\n#endif\n#ifdef BUMP\nuniform vec3 vBumpInfos;\nuniform vec2 vTangentSpaceParams;\n#endif\n#ifdef ALPHATEST\nuniform float alphaCutOff;\n#endif\n#if defined(REFLECTIONMAP_SPHERICAL) || defined(REFLECTIONMAP_PROJECTION) || defined(REFRACTION)\nuniform mat4 view;\n#endif\n#ifdef REFRACTION\nuniform vec4 vRefractionInfos;\n#ifndef REFRACTIONMAP_3D\nuniform mat4 refractionMatrix;\n#endif\n#ifdef REFRACTIONFRESNEL\nuniform vec4 refractionLeftColor;\nuniform vec4 refractionRightColor;\n#endif\n#if defined(USE_LOCAL_REFRACTIONMAP_CUBIC) && defined(REFRACTIONMAP_3D)\nuniform vec3 vRefractionPosition;\nuniform vec3 vRefractionSize;\n#endif\n#endif\n#if defined(SPECULAR) && defined(SPECULARTERM)\nuniform vec2 vSpecularInfos;\n#endif\n#ifdef DIFFUSEFRESNEL\nuniform vec4 diffuseLeftColor;\nuniform vec4 diffuseRightColor;\n#endif\n#ifdef OPACITYFRESNEL\nuniform vec4 opacityParts;\n#endif\n#ifdef EMISSIVEFRESNEL\nuniform vec4 emissiveLeftColor;\nuniform vec4 emissiveRightColor;\n#endif\n\n#ifdef REFLECTION\nuniform vec2 vReflectionInfos;\n#if defined(REFLECTIONMAP_PLANAR) || defined(REFLECTIONMAP_CUBIC) || defined(REFLECTIONMAP_PROJECTION) || defined(REFLECTIONMAP_EQUIRECTANGULAR) || defined(REFLECTIONMAP_SPHERICAL) || defined(REFLECTIONMAP_SKYBOX)\nuniform mat4 reflectionMatrix;\n#endif\n#ifndef REFLECTIONMAP_SKYBOX\n#if defined(USE_LOCAL_REFLECTIONMAP_CUBIC) && defined(REFLECTIONMAP_CUBIC)\nuniform vec3 vReflectionPosition;\nuniform vec3 vReflectionSize;\n#endif\n#endif\n#ifdef REFLECTIONFRESNEL\nuniform vec4 reflectionLeftColor;\nuniform vec4 reflectionRightColor;\n#endif\n#endif\n#ifdef DETAIL\nuniform vec4 vDetailInfos;\n#endif";
+ShaderStore.IncludesShadersStore[name$Y] = shader$Y;
+
+var name$X = 'sceneUboDeclaration';
+var shader$X = "layout(std140,column_major) uniform;\nuniform Scene {\nmat4 viewProjection;\n#ifdef MULTIVIEW\nmat4 viewProjectionR;\n#endif\nmat4 view;\nmat4 projection;\nvec4 vEyePosition;\n};\n";
+ShaderStore.IncludesShadersStore[name$X] = shader$X;
+
+var name$W = 'meshUboDeclaration';
+var shader$W = "layout(std140,column_major) uniform;\nuniform Mesh\n{\nmat4 world;\nfloat visibility;\n};\n#define WORLD_UBO";
+ShaderStore.IncludesShadersStore[name$W] = shader$W;
+
+var name$V = 'defaultUboDeclaration';
+var shader$V = "layout(std140,column_major) uniform;\nuniform Material\n{\nvec4 diffuseLeftColor;\nvec4 diffuseRightColor;\nvec4 opacityParts;\nvec4 reflectionLeftColor;\nvec4 reflectionRightColor;\nvec4 refractionLeftColor;\nvec4 refractionRightColor;\nvec4 emissiveLeftColor;\nvec4 emissiveRightColor;\nvec2 vDiffuseInfos;\nvec2 vAmbientInfos;\nvec2 vOpacityInfos;\nvec2 vReflectionInfos;\nvec3 vReflectionPosition;\nvec3 vReflectionSize;\nvec2 vEmissiveInfos;\nvec2 vLightmapInfos;\nvec2 vSpecularInfos;\nvec3 vBumpInfos;\nmat4 diffuseMatrix;\nmat4 ambientMatrix;\nmat4 opacityMatrix;\nmat4 reflectionMatrix;\nmat4 emissiveMatrix;\nmat4 lightmapMatrix;\nmat4 specularMatrix;\nmat4 bumpMatrix;\nvec2 vTangentSpaceParams;\nfloat pointSize;\nfloat alphaCutOff;\nmat4 refractionMatrix;\nvec4 vRefractionInfos;\nvec3 vRefractionPosition;\nvec3 vRefractionSize;\nvec4 vSpecularColor;\nvec3 vEmissiveColor;\nvec4 vDiffuseColor;\nvec3 vAmbientColor;\nvec4 vDetailInfos;\nmat4 detailMatrix;\n};\n#include<sceneUboDeclaration>\n#include<meshUboDeclaration>\n";
+ShaderStore.IncludesShadersStore[name$V] = shader$V;
+
+var name$U = 'prePassDeclaration';
+var shader$U = "#ifdef PREPASS\n#extension GL_EXT_draw_buffers : require\nlayout(location=0) out highp vec4 glFragData[{X}];\nhighp vec4 gl_FragColor;\n#ifdef PREPASS_DEPTH\nvarying highp vec3 vViewPos;\n#endif\n#ifdef PREPASS_VELOCITY\nvarying highp vec4 vCurrentPosition;\nvarying highp vec4 vPreviousPosition;\n#endif\n#endif\n";
 ShaderStore.IncludesShadersStore[name$U] = shader$U;
 
-var name$T = 'sceneUboDeclaration';
-var shader$T = "layout(std140,column_major) uniform;\nuniform Scene {\nmat4 viewProjection;\n#ifdef MULTIVIEW\nmat4 viewProjectionR;\n#endif\nmat4 view;\nmat4 projection;\nvec4 vEyePosition;\n};\n";
+var name$T = 'oitDeclaration';
+var shader$T = "#ifdef ORDER_INDEPENDENT_TRANSPARENCY\n#extension GL_EXT_draw_buffers : require\nlayout(location=0) out vec2 depth;\nlayout(location=1) out vec4 frontColor;\nlayout(location=2) out vec4 backColor;\n#define MAX_DEPTH 99999.0\nhighp vec4 gl_FragColor;\nuniform sampler2D oitDepthSampler;\nuniform sampler2D oitFrontColorSampler;\n#endif\n";
 ShaderStore.IncludesShadersStore[name$T] = shader$T;
 
-var name$S = 'meshUboDeclaration';
-var shader$S = "layout(std140,column_major) uniform;\nuniform Mesh\n{\nmat4 world;\nfloat visibility;\n};\n#define WORLD_UBO";
+var name$S = 'mainUVVaryingDeclaration';
+var shader$S = "#ifdef MAINUV{X}\nvarying vec2 vMainUV{X};\n#endif\n";
 ShaderStore.IncludesShadersStore[name$S] = shader$S;
 
-var name$R = 'defaultUboDeclaration';
-var shader$R = "layout(std140,column_major) uniform;\nuniform Material\n{\nvec4 diffuseLeftColor;\nvec4 diffuseRightColor;\nvec4 opacityParts;\nvec4 reflectionLeftColor;\nvec4 reflectionRightColor;\nvec4 refractionLeftColor;\nvec4 refractionRightColor;\nvec4 emissiveLeftColor;\nvec4 emissiveRightColor;\nvec2 vDiffuseInfos;\nvec2 vAmbientInfos;\nvec2 vOpacityInfos;\nvec2 vReflectionInfos;\nvec3 vReflectionPosition;\nvec3 vReflectionSize;\nvec2 vEmissiveInfos;\nvec2 vLightmapInfos;\nvec2 vSpecularInfos;\nvec3 vBumpInfos;\nmat4 diffuseMatrix;\nmat4 ambientMatrix;\nmat4 opacityMatrix;\nmat4 reflectionMatrix;\nmat4 emissiveMatrix;\nmat4 lightmapMatrix;\nmat4 specularMatrix;\nmat4 bumpMatrix;\nvec2 vTangentSpaceParams;\nfloat pointSize;\nfloat alphaCutOff;\nmat4 refractionMatrix;\nvec4 vRefractionInfos;\nvec3 vRefractionPosition;\nvec3 vRefractionSize;\nvec4 vSpecularColor;\nvec3 vEmissiveColor;\nvec4 vDiffuseColor;\nvec3 vAmbientColor;\nvec4 vDetailInfos;\nmat4 detailMatrix;\n};\n#include<sceneUboDeclaration>\n#include<meshUboDeclaration>\n";
+var name$R = 'helperFunctions';
+var shader$R = "const float PI=3.1415926535897932384626433832795;\nconst float HALF_MIN=5.96046448e-08;\nconst float LinearEncodePowerApprox=2.2;\nconst float GammaEncodePowerApprox=1.0/LinearEncodePowerApprox;\nconst vec3 LuminanceEncodeApprox=vec3(0.2126,0.7152,0.0722);\nconst float Epsilon=0.0000001;\n#define saturate(x) clamp(x,0.0,1.0)\n#define absEps(x) abs(x)+Epsilon\n#define maxEps(x) max(x,Epsilon)\n#define saturateEps(x) clamp(x,Epsilon,1.0)\nmat3 transposeMat3(mat3 inMatrix) {\nvec3 i0=inMatrix[0];\nvec3 i1=inMatrix[1];\nvec3 i2=inMatrix[2];\nmat3 outMatrix=mat3(\nvec3(i0.x,i1.x,i2.x),\nvec3(i0.y,i1.y,i2.y),\nvec3(i0.z,i1.z,i2.z)\n);\nreturn outMatrix;\n}\n\nmat3 inverseMat3(mat3 inMatrix) {\nfloat a00=inMatrix[0][0],a01=inMatrix[0][1],a02=inMatrix[0][2];\nfloat a10=inMatrix[1][0],a11=inMatrix[1][1],a12=inMatrix[1][2];\nfloat a20=inMatrix[2][0],a21=inMatrix[2][1],a22=inMatrix[2][2];\nfloat b01=a22*a11-a12*a21;\nfloat b11=-a22*a10+a12*a20;\nfloat b21=a21*a10-a11*a20;\nfloat det=a00*b01+a01*b11+a02*b21;\nreturn mat3(b01,(-a22*a01+a02*a21),(a12*a01-a02*a11),\nb11,(a22*a00-a02*a20),(-a12*a00+a02*a10),\nb21,(-a21*a00+a01*a20),(a11*a00-a01*a10))/det;\n}\nfloat toLinearSpace(float color)\n{\nreturn pow(color,LinearEncodePowerApprox);\n}\nvec3 toLinearSpace(vec3 color)\n{\nreturn pow(color,vec3(LinearEncodePowerApprox));\n}\nvec4 toLinearSpace(vec4 color)\n{\nreturn vec4(pow(color.rgb,vec3(LinearEncodePowerApprox)),color.a);\n}\nvec3 toGammaSpace(vec3 color)\n{\nreturn pow(color,vec3(GammaEncodePowerApprox));\n}\nvec4 toGammaSpace(vec4 color)\n{\nreturn vec4(pow(color.rgb,vec3(GammaEncodePowerApprox)),color.a);\n}\nfloat toGammaSpace(float color)\n{\nreturn pow(color,GammaEncodePowerApprox);\n}\nfloat square(float value)\n{\nreturn value*value;\n}\nfloat pow5(float value) {\nfloat sq=value*value;\nreturn sq*sq*value;\n}\nfloat getLuminance(vec3 color)\n{\nreturn clamp(dot(color,LuminanceEncodeApprox),0.,1.);\n}\n\nfloat getRand(vec2 seed) {\nreturn fract(sin(dot(seed.xy ,vec2(12.9898,78.233)))*43758.5453);\n}\nfloat dither(vec2 seed,float varianceAmount) {\nfloat rand=getRand(seed);\nfloat dither=mix(-varianceAmount/255.0,varianceAmount/255.0,rand);\nreturn dither;\n}\n\nconst float rgbdMaxRange=255.0;\nvec4 toRGBD(vec3 color) {\nfloat maxRGB=maxEps(max(color.r,max(color.g,color.b)));\nfloat D=max(rgbdMaxRange/maxRGB,1.);\nD=clamp(floor(D)/255.0,0.,1.);\n\nvec3 rgb=color.rgb*D;\n\nrgb=toGammaSpace(rgb);\nreturn vec4(clamp(rgb,0.,1.),D);\n}\nvec3 fromRGBD(vec4 rgbd) {\n\nrgbd.rgb=toLinearSpace(rgbd.rgb);\n\nreturn rgbd.rgb/rgbd.a;\n}\nvec3 parallaxCorrectNormal( vec3 vertexPos,vec3 origVec,vec3 cubeSize,vec3 cubePos ) {\n\nvec3 invOrigVec=vec3(1.0,1.0,1.0)/origVec;\nvec3 halfSize=cubeSize*0.5;\nvec3 intersecAtMaxPlane=(cubePos+halfSize-vertexPos)*invOrigVec;\nvec3 intersecAtMinPlane=(cubePos-halfSize-vertexPos)*invOrigVec;\n\nvec3 largestIntersec=max(intersecAtMaxPlane,intersecAtMinPlane);\n\nfloat distance=min(min(largestIntersec.x,largestIntersec.y),largestIntersec.z);\n\nvec3 intersectPositionWS=vertexPos+origVec*distance;\n\nreturn intersectPositionWS-cubePos;\n}\n";
 ShaderStore.IncludesShadersStore[name$R] = shader$R;
 
-var name$Q = 'prePassDeclaration';
-var shader$Q = "#ifdef PREPASS\n#extension GL_EXT_draw_buffers : require\nlayout(location=0) out highp vec4 glFragData[{X}];\nhighp vec4 gl_FragColor;\n#ifdef PREPASS_DEPTH\nvarying highp vec3 vViewPos;\n#endif\n#ifdef PREPASS_VELOCITY\nvarying highp vec4 vCurrentPosition;\nvarying highp vec4 vPreviousPosition;\n#endif\n#endif\n";
+var name$Q = 'lightFragmentDeclaration';
+var shader$Q = "#ifdef LIGHT{X}\nuniform vec4 vLightData{X};\nuniform vec4 vLightDiffuse{X};\n#ifdef SPECULARTERM\nuniform vec4 vLightSpecular{X};\n#else\nvec4 vLightSpecular{X}=vec4(0.);\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float viewFrustumZ{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float frustumLengths{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float cascadeBlendFactor{X};\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\nuniform highp sampler2DArray depthSampler{X};\nuniform vec2 lightSizeUVCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float depthCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float penumbraDarkness{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\n#else\nuniform highp sampler2DArray shadowSampler{X};\n#endif\n#ifdef SHADOWCSMDEBUG{X}\nconst vec3 vCascadeColorsMultiplier{X}[8]=vec3[8]\n(\nvec3 ( 1.5,0.0,0.0 ),\nvec3 ( 0.0,1.5,0.0 ),\nvec3 ( 0.0,0.0,5.5 ),\nvec3 ( 1.5,0.0,5.5 ),\nvec3 ( 1.5,1.5,0.0 ),\nvec3 ( 1.0,1.0,1.0 ),\nvec3 ( 0.0,1.0,5.5 ),\nvec3 ( 0.5,3.5,0.75 )\n);\nvec3 shadowDebug{X};\n#endif\n#ifdef SHADOWCSMUSESHADOWMAXZ{X}\nint index{X}=-1;\n#else\nint index{X}=SHADOWCSMNUM_CASCADES{X}-1;\n#endif\nfloat diff{X}=0.;\n#elif defined(SHADOWCUBE{X})\nuniform samplerCube shadowSampler{X};\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DShadow shadowSampler{X};\nuniform highp sampler2D depthSampler{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DShadow shadowSampler{X};\n#else\nuniform sampler2D shadowSampler{X};\n#endif\nuniform mat4 lightMatrix{X};\n#endif\nuniform vec4 shadowsInfo{X};\nuniform vec2 depthValues{X};\n#endif\n#ifdef SPOTLIGHT{X}\nuniform vec4 vLightDirection{X};\nuniform vec4 vLightFalloff{X};\n#elif defined(POINTLIGHT{X})\nuniform vec4 vLightFalloff{X};\n#elif defined(HEMILIGHT{X})\nuniform vec3 vLightGround{X};\n#endif\n#ifdef PROJECTEDLIGHTTEXTURE{X}\nuniform mat4 textureProjectionMatrix{X};\nuniform sampler2D projectionLightSampler{X};\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$Q] = shader$Q;
 
-var name$P = 'mainUVVaryingDeclaration';
-var shader$P = "#ifdef MAINUV{X}\nvarying vec2 vMainUV{X};\n#endif\n";
+var name$P = 'lightUboDeclaration';
+var shader$P = "#ifdef LIGHT{X}\nuniform Light{X}\n{\nvec4 vLightData;\nvec4 vLightDiffuse;\nvec4 vLightSpecular;\n#ifdef SPOTLIGHT{X}\nvec4 vLightDirection;\nvec4 vLightFalloff;\n#elif defined(POINTLIGHT{X})\nvec4 vLightFalloff;\n#elif defined(HEMILIGHT{X})\nvec3 vLightGround;\n#endif\nvec4 shadowsInfo;\nvec2 depthValues;\n} light{X};\n#ifdef PROJECTEDLIGHTTEXTURE{X}\nuniform mat4 textureProjectionMatrix{X};\nuniform sampler2D projectionLightSampler{X};\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float viewFrustumZ{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float frustumLengths{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float cascadeBlendFactor{X};\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\nuniform highp sampler2DArray depthSampler{X};\nuniform vec2 lightSizeUVCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float depthCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float penumbraDarkness{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\n#else\nuniform highp sampler2DArray shadowSampler{X};\n#endif\n#ifdef SHADOWCSMDEBUG{X}\nconst vec3 vCascadeColorsMultiplier{X}[8]=vec3[8]\n(\nvec3 ( 1.5,0.0,0.0 ),\nvec3 ( 0.0,1.5,0.0 ),\nvec3 ( 0.0,0.0,5.5 ),\nvec3 ( 1.5,0.0,5.5 ),\nvec3 ( 1.5,1.5,0.0 ),\nvec3 ( 1.0,1.0,1.0 ),\nvec3 ( 0.0,1.0,5.5 ),\nvec3 ( 0.5,3.5,0.75 )\n);\nvec3 shadowDebug{X};\n#endif\n#ifdef SHADOWCSMUSESHADOWMAXZ{X}\nint index{X}=-1;\n#else\nint index{X}=SHADOWCSMNUM_CASCADES{X}-1;\n#endif\nfloat diff{X}=0.;\n#elif defined(SHADOWCUBE{X})\nuniform samplerCube shadowSampler{X};\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DShadow shadowSampler{X};\nuniform highp sampler2D depthSampler{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DShadow shadowSampler{X};\n#else\nuniform sampler2D shadowSampler{X};\n#endif\nuniform mat4 lightMatrix{X};\n#endif\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$P] = shader$P;
 
-var name$O = 'helperFunctions';
-var shader$O = "const float PI=3.1415926535897932384626433832795;\nconst float HALF_MIN=5.96046448e-08;\nconst float LinearEncodePowerApprox=2.2;\nconst float GammaEncodePowerApprox=1.0/LinearEncodePowerApprox;\nconst vec3 LuminanceEncodeApprox=vec3(0.2126,0.7152,0.0722);\nconst float Epsilon=0.0000001;\n#define saturate(x) clamp(x,0.0,1.0)\n#define absEps(x) abs(x)+Epsilon\n#define maxEps(x) max(x,Epsilon)\n#define saturateEps(x) clamp(x,Epsilon,1.0)\nmat3 transposeMat3(mat3 inMatrix) {\nvec3 i0=inMatrix[0];\nvec3 i1=inMatrix[1];\nvec3 i2=inMatrix[2];\nmat3 outMatrix=mat3(\nvec3(i0.x,i1.x,i2.x),\nvec3(i0.y,i1.y,i2.y),\nvec3(i0.z,i1.z,i2.z)\n);\nreturn outMatrix;\n}\n\nmat3 inverseMat3(mat3 inMatrix) {\nfloat a00=inMatrix[0][0],a01=inMatrix[0][1],a02=inMatrix[0][2];\nfloat a10=inMatrix[1][0],a11=inMatrix[1][1],a12=inMatrix[1][2];\nfloat a20=inMatrix[2][0],a21=inMatrix[2][1],a22=inMatrix[2][2];\nfloat b01=a22*a11-a12*a21;\nfloat b11=-a22*a10+a12*a20;\nfloat b21=a21*a10-a11*a20;\nfloat det=a00*b01+a01*b11+a02*b21;\nreturn mat3(b01,(-a22*a01+a02*a21),(a12*a01-a02*a11),\nb11,(a22*a00-a02*a20),(-a12*a00+a02*a10),\nb21,(-a21*a00+a01*a20),(a11*a00-a01*a10))/det;\n}\nfloat toLinearSpace(float color)\n{\nreturn pow(color,LinearEncodePowerApprox);\n}\nvec3 toLinearSpace(vec3 color)\n{\nreturn pow(color,vec3(LinearEncodePowerApprox));\n}\nvec4 toLinearSpace(vec4 color)\n{\nreturn vec4(pow(color.rgb,vec3(LinearEncodePowerApprox)),color.a);\n}\nvec3 toGammaSpace(vec3 color)\n{\nreturn pow(color,vec3(GammaEncodePowerApprox));\n}\nvec4 toGammaSpace(vec4 color)\n{\nreturn vec4(pow(color.rgb,vec3(GammaEncodePowerApprox)),color.a);\n}\nfloat toGammaSpace(float color)\n{\nreturn pow(color,GammaEncodePowerApprox);\n}\nfloat square(float value)\n{\nreturn value*value;\n}\nfloat pow5(float value) {\nfloat sq=value*value;\nreturn sq*sq*value;\n}\nfloat getLuminance(vec3 color)\n{\nreturn clamp(dot(color,LuminanceEncodeApprox),0.,1.);\n}\n\nfloat getRand(vec2 seed) {\nreturn fract(sin(dot(seed.xy ,vec2(12.9898,78.233)))*43758.5453);\n}\nfloat dither(vec2 seed,float varianceAmount) {\nfloat rand=getRand(seed);\nfloat dither=mix(-varianceAmount/255.0,varianceAmount/255.0,rand);\nreturn dither;\n}\n\nconst float rgbdMaxRange=255.0;\nvec4 toRGBD(vec3 color) {\nfloat maxRGB=maxEps(max(color.r,max(color.g,color.b)));\nfloat D=max(rgbdMaxRange/maxRGB,1.);\nD=clamp(floor(D)/255.0,0.,1.);\n\nvec3 rgb=color.rgb*D;\n\nrgb=toGammaSpace(rgb);\nreturn vec4(clamp(rgb,0.,1.),D);\n}\nvec3 fromRGBD(vec4 rgbd) {\n\nrgbd.rgb=toLinearSpace(rgbd.rgb);\n\nreturn rgbd.rgb/rgbd.a;\n}\nvec3 parallaxCorrectNormal( vec3 vertexPos,vec3 origVec,vec3 cubeSize,vec3 cubePos ) {\n\nvec3 invOrigVec=vec3(1.0,1.0,1.0)/origVec;\nvec3 halfSize=cubeSize*0.5;\nvec3 intersecAtMaxPlane=(cubePos+halfSize-vertexPos)*invOrigVec;\nvec3 intersecAtMinPlane=(cubePos-halfSize-vertexPos)*invOrigVec;\n\nvec3 largestIntersec=max(intersecAtMaxPlane,intersecAtMinPlane);\n\nfloat distance=min(min(largestIntersec.x,largestIntersec.y),largestIntersec.z);\n\nvec3 intersectPositionWS=vertexPos+origVec*distance;\n\nreturn intersectPositionWS-cubePos;\n}\n";
+var name$O = 'lightsFragmentFunctions';
+var shader$O = "\nstruct lightingInfo\n{\nvec3 diffuse;\n#ifdef SPECULARTERM\nvec3 specular;\n#endif\n#ifdef NDOTL\nfloat ndl;\n#endif\n};\nlightingInfo computeLighting(vec3 viewDirectionW,vec3 vNormal,vec4 lightData,vec3 diffuseColor,vec3 specularColor,float range,float glossiness) {\nlightingInfo result;\nvec3 lightVectorW;\nfloat attenuation=1.0;\nif (lightData.w == 0.)\n{\nvec3 direction=lightData.xyz-vPositionW;\nattenuation=max(0.,1.0-length(direction)/range);\nlightVectorW=normalize(direction);\n}\nelse\n{\nlightVectorW=normalize(-lightData.xyz);\n}\n\nfloat ndl=max(0.,dot(vNormal,lightVectorW));\n#ifdef NDOTL\nresult.ndl=ndl;\n#endif\nresult.diffuse=ndl*diffuseColor*attenuation;\n#ifdef SPECULARTERM\n\nvec3 angleW=normalize(viewDirectionW+lightVectorW);\nfloat specComp=max(0.,dot(vNormal,angleW));\nspecComp=pow(specComp,max(1.,glossiness));\nresult.specular=specComp*specularColor*attenuation;\n#endif\nreturn result;\n}\nlightingInfo computeSpotLighting(vec3 viewDirectionW,vec3 vNormal,vec4 lightData,vec4 lightDirection,vec3 diffuseColor,vec3 specularColor,float range,float glossiness) {\nlightingInfo result;\nvec3 direction=lightData.xyz-vPositionW;\nvec3 lightVectorW=normalize(direction);\nfloat attenuation=max(0.,1.0-length(direction)/range);\n\nfloat cosAngle=max(0.,dot(lightDirection.xyz,-lightVectorW));\nif (cosAngle>=lightDirection.w)\n{\ncosAngle=max(0.,pow(cosAngle,lightData.w));\nattenuation*=cosAngle;\n\nfloat ndl=max(0.,dot(vNormal,lightVectorW));\n#ifdef NDOTL\nresult.ndl=ndl;\n#endif\nresult.diffuse=ndl*diffuseColor*attenuation;\n#ifdef SPECULARTERM\n\nvec3 angleW=normalize(viewDirectionW+lightVectorW);\nfloat specComp=max(0.,dot(vNormal,angleW));\nspecComp=pow(specComp,max(1.,glossiness));\nresult.specular=specComp*specularColor*attenuation;\n#endif\nreturn result;\n}\nresult.diffuse=vec3(0.);\n#ifdef SPECULARTERM\nresult.specular=vec3(0.);\n#endif\n#ifdef NDOTL\nresult.ndl=0.;\n#endif\nreturn result;\n}\nlightingInfo computeHemisphericLighting(vec3 viewDirectionW,vec3 vNormal,vec4 lightData,vec3 diffuseColor,vec3 specularColor,vec3 groundColor,float glossiness) {\nlightingInfo result;\n\nfloat ndl=dot(vNormal,lightData.xyz)*0.5+0.5;\n#ifdef NDOTL\nresult.ndl=ndl;\n#endif\nresult.diffuse=mix(groundColor,diffuseColor,ndl);\n#ifdef SPECULARTERM\n\nvec3 angleW=normalize(viewDirectionW+lightData.xyz);\nfloat specComp=max(0.,dot(vNormal,angleW));\nspecComp=pow(specComp,max(1.,glossiness));\nresult.specular=specComp*specularColor;\n#endif\nreturn result;\n}\n#define inline\nvec3 computeProjectionTextureDiffuseLighting(sampler2D projectionLightSampler,mat4 textureProjectionMatrix){\nvec4 strq=textureProjectionMatrix*vec4(vPositionW,1.0);\nstrq/=strq.w;\nvec3 textureColor=texture2D(projectionLightSampler,strq.xy).rgb;\nreturn textureColor;\n}";
 ShaderStore.IncludesShadersStore[name$O] = shader$O;
 
-var name$N = 'lightFragmentDeclaration';
-var shader$N = "#ifdef LIGHT{X}\nuniform vec4 vLightData{X};\nuniform vec4 vLightDiffuse{X};\n#ifdef SPECULARTERM\nuniform vec4 vLightSpecular{X};\n#else\nvec4 vLightSpecular{X}=vec4(0.);\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float viewFrustumZ{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float frustumLengths{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float cascadeBlendFactor{X};\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\nuniform highp sampler2DArray depthSampler{X};\nuniform vec2 lightSizeUVCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float depthCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float penumbraDarkness{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\n#else\nuniform highp sampler2DArray shadowSampler{X};\n#endif\n#ifdef SHADOWCSMDEBUG{X}\nconst vec3 vCascadeColorsMultiplier{X}[8]=vec3[8]\n(\nvec3 ( 1.5,0.0,0.0 ),\nvec3 ( 0.0,1.5,0.0 ),\nvec3 ( 0.0,0.0,5.5 ),\nvec3 ( 1.5,0.0,5.5 ),\nvec3 ( 1.5,1.5,0.0 ),\nvec3 ( 1.0,1.0,1.0 ),\nvec3 ( 0.0,1.0,5.5 ),\nvec3 ( 0.5,3.5,0.75 )\n);\nvec3 shadowDebug{X};\n#endif\n#ifdef SHADOWCSMUSESHADOWMAXZ{X}\nint index{X}=-1;\n#else\nint index{X}=SHADOWCSMNUM_CASCADES{X}-1;\n#endif\nfloat diff{X}=0.;\n#elif defined(SHADOWCUBE{X})\nuniform samplerCube shadowSampler{X};\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DShadow shadowSampler{X};\nuniform highp sampler2D depthSampler{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DShadow shadowSampler{X};\n#else\nuniform sampler2D shadowSampler{X};\n#endif\nuniform mat4 lightMatrix{X};\n#endif\nuniform vec4 shadowsInfo{X};\nuniform vec2 depthValues{X};\n#endif\n#ifdef SPOTLIGHT{X}\nuniform vec4 vLightDirection{X};\nuniform vec4 vLightFalloff{X};\n#elif defined(POINTLIGHT{X})\nuniform vec4 vLightFalloff{X};\n#elif defined(HEMILIGHT{X})\nuniform vec3 vLightGround{X};\n#endif\n#ifdef PROJECTEDLIGHTTEXTURE{X}\nuniform mat4 textureProjectionMatrix{X};\nuniform sampler2D projectionLightSampler{X};\n#endif\n#endif";
+var name$N = 'shadowsFragmentFunctions';
+var shader$N = "#ifdef SHADOWS\n#ifndef SHADOWFLOAT\n\nfloat unpack(vec4 color)\n{\nconst vec4 bit_shift=vec4(1.0/(255.0*255.0*255.0),1.0/(255.0*255.0),1.0/255.0,1.0);\nreturn dot(color,bit_shift);\n}\n#endif\nfloat computeFallOff(float value,vec2 clipSpace,float frustumEdgeFalloff)\n{\nfloat mask=smoothstep(1.0-frustumEdgeFalloff,1.00000012,clamp(dot(clipSpace,clipSpace),0.,1.));\nreturn mix(value,1.0,mask);\n}\n#define inline\nfloat computeShadowCube(vec3 lightPosition,samplerCube shadowSampler,float darkness,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\ndepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\n#ifndef SHADOWFLOAT\nfloat shadow=unpack(textureCube(shadowSampler,directionToLight));\n#else\nfloat shadow=textureCube(shadowSampler,directionToLight).x;\n#endif\nreturn depth>shadow ? darkness : 1.0;\n}\n#define inline\nfloat computeShadowWithPoissonSamplingCube(vec3 lightPosition,samplerCube shadowSampler,float mapSize,float darkness,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\ndepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\nfloat visibility=1.;\nvec3 poissonDisk[4];\npoissonDisk[0]=vec3(-1.0,1.0,-1.0);\npoissonDisk[1]=vec3(1.0,-1.0,-1.0);\npoissonDisk[2]=vec3(-1.0,-1.0,-1.0);\npoissonDisk[3]=vec3(1.0,-1.0,1.0);\n\n#ifndef SHADOWFLOAT\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[0]*mapSize))<depth) visibility-=0.25;\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[1]*mapSize))<depth) visibility-=0.25;\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[2]*mapSize))<depth) visibility-=0.25;\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[3]*mapSize))<depth) visibility-=0.25;\n#else\nif (textureCube(shadowSampler,directionToLight+poissonDisk[0]*mapSize).x<depth) visibility-=0.25;\nif (textureCube(shadowSampler,directionToLight+poissonDisk[1]*mapSize).x<depth) visibility-=0.25;\nif (textureCube(shadowSampler,directionToLight+poissonDisk[2]*mapSize).x<depth) visibility-=0.25;\nif (textureCube(shadowSampler,directionToLight+poissonDisk[3]*mapSize).x<depth) visibility-=0.25;\n#endif\nreturn min(1.0,visibility+darkness);\n}\n#define inline\nfloat computeShadowWithESMCube(vec3 lightPosition,samplerCube shadowSampler,float darkness,float depthScale,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\nfloat shadowPixelDepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(textureCube(shadowSampler,directionToLight));\n#else\nfloat shadowMapSample=textureCube(shadowSampler,directionToLight).x;\n#endif\nfloat esm=1.0-clamp(exp(min(87.,depthScale*shadowPixelDepth))*shadowMapSample,0.,1.-darkness);\nreturn esm;\n}\n#define inline\nfloat computeShadowWithCloseESMCube(vec3 lightPosition,samplerCube shadowSampler,float darkness,float depthScale,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\nfloat shadowPixelDepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(textureCube(shadowSampler,directionToLight));\n#else\nfloat shadowMapSample=textureCube(shadowSampler,directionToLight).x;\n#endif\nfloat esm=clamp(exp(min(87.,-depthScale*(shadowPixelDepth-shadowMapSample))),darkness,1.);\nreturn esm;\n}\n#if defined(WEBGL2) || defined(WEBGPU)\n#define inline\nfloat computeShadowCSM(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nvec3 uvLayer=vec3(uv.x,uv.y,layer);\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadow=unpack(texture2D(shadowSampler,uvLayer));\n#else\nfloat shadow=texture2D(shadowSampler,uvLayer).x;\n#endif\nreturn shadowPixelDepth>shadow ? computeFallOff(darkness,clipSpace.xy,frustumEdgeFalloff) : 1.;\n}\n#endif\n#define inline\nfloat computeShadow(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadow=unpack(texture2D(shadowSampler,uv));\n#else\nfloat shadow=texture2D(shadowSampler,uv).x;\n#endif\nreturn shadowPixelDepth>shadow ? computeFallOff(darkness,clipSpace.xy,frustumEdgeFalloff) : 1.;\n}\n}\n#define inline\nfloat computeShadowWithPoissonSampling(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float mapSize,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\nfloat visibility=1.;\nvec2 poissonDisk[4];\npoissonDisk[0]=vec2(-0.94201624,-0.39906216);\npoissonDisk[1]=vec2(0.94558609,-0.76890725);\npoissonDisk[2]=vec2(-0.094184101,-0.92938870);\npoissonDisk[3]=vec2(0.34495938,0.29387760);\n\n#ifndef SHADOWFLOAT\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[0]*mapSize))<shadowPixelDepth) visibility-=0.25;\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[1]*mapSize))<shadowPixelDepth) visibility-=0.25;\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[2]*mapSize))<shadowPixelDepth) visibility-=0.25;\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[3]*mapSize))<shadowPixelDepth) visibility-=0.25;\n#else\nif (texture2D(shadowSampler,uv+poissonDisk[0]*mapSize).x<shadowPixelDepth) visibility-=0.25;\nif (texture2D(shadowSampler,uv+poissonDisk[1]*mapSize).x<shadowPixelDepth) visibility-=0.25;\nif (texture2D(shadowSampler,uv+poissonDisk[2]*mapSize).x<shadowPixelDepth) visibility-=0.25;\nif (texture2D(shadowSampler,uv+poissonDisk[3]*mapSize).x<shadowPixelDepth) visibility-=0.25;\n#endif\nreturn computeFallOff(min(1.0,visibility+darkness),clipSpace.xy,frustumEdgeFalloff);\n}\n}\n#define inline\nfloat computeShadowWithESM(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float darkness,float depthScale,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(texture2D(shadowSampler,uv));\n#else\nfloat shadowMapSample=texture2D(shadowSampler,uv).x;\n#endif\nfloat esm=1.0-clamp(exp(min(87.,depthScale*shadowPixelDepth))*shadowMapSample,0.,1.-darkness);\nreturn computeFallOff(esm,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n#define inline\nfloat computeShadowWithCloseESM(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float darkness,float depthScale,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(texture2D(shadowSampler,uv));\n#else\nfloat shadowMapSample=texture2D(shadowSampler,uv).x;\n#endif\nfloat esm=clamp(exp(min(87.,-depthScale*(shadowPixelDepth-shadowMapSample))),darkness,1.);\nreturn computeFallOff(esm,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n#ifdef IS_NDC_HALF_ZRANGE\n#define ZINCLIP clipSpace.z\n#else\n#define ZINCLIP uvDepth.z\n#endif\n#if defined(WEBGL2) || defined(WEBGPU)\n#define GREATEST_LESS_THAN_ONE 0.99999994\n\n#define inline\nfloat computeShadowWithCSMPCF1(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArrayShadow shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec4 uvDepthLayer=vec4(uvDepth.x,uvDepth.y,layer,uvDepth.z);\nfloat shadow=texture2D(shadowSampler,uvDepthLayer);\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n\n\n\n#define inline\nfloat computeShadowWithCSMPCF3(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArrayShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\n\n\nvec2 uvw0=3.-2.*st;\nvec2 uvw1=1.+2.*st;\nvec2 u=vec2((2.-st.x)/uvw0.x-1.,st.x/uvw1.x+1.)*shadowMapSizeAndInverse.y;\nvec2 v=vec2((2.-st.y)/uvw0.y-1.,st.y/uvw1.y+1.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[0]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[0]),layer,uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[1]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[1]),layer,uvDepth.z));\nshadow=shadow/16.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n\n\n\n#define inline\nfloat computeShadowWithCSMPCF5(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArrayShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\nvec2 uvw0=4.-3.*st;\nvec2 uvw1=vec2(7.);\nvec2 uvw2=1.+3.*st;\nvec3 u=vec3((3.-2.*st.x)/uvw0.x-2.,(3.+st.x)/uvw1.x,st.x/uvw2.x+2.)*shadowMapSizeAndInverse.y;\nvec3 v=vec3((3.-2.*st.y)/uvw0.y-2.,(3.+st.y)/uvw1.y,st.y/uvw2.y+2.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[0]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[0]),layer,uvDepth.z));\nshadow+=uvw2.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[2],v[0]),layer,uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[1]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[1]),layer,uvDepth.z));\nshadow+=uvw2.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[2],v[1]),layer,uvDepth.z));\nshadow+=uvw0.x*uvw2.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[2]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw2.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[2]),layer,uvDepth.z));\nshadow+=uvw2.x*uvw2.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[2],v[2]),layer,uvDepth.z));\nshadow=shadow/144.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n\n#define inline\nfloat computeShadowWithPCF1(vec4 vPositionFromLight,float depthMetric,highp sampler2DShadow shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nfloat shadow=texture2D(shadowSampler,uvDepth);\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n\n\n\n#define inline\nfloat computeShadowWithPCF3(vec4 vPositionFromLight,float depthMetric,highp sampler2DShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\n\n\nvec2 uvw0=3.-2.*st;\nvec2 uvw1=1.+2.*st;\nvec2 u=vec2((2.-st.x)/uvw0.x-1.,st.x/uvw1.x+1.)*shadowMapSizeAndInverse.y;\nvec2 v=vec2((2.-st.y)/uvw0.y-1.,st.y/uvw1.y+1.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[0]),uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[0]),uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[1]),uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[1]),uvDepth.z));\nshadow=shadow/16.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n\n\n\n#define inline\nfloat computeShadowWithPCF5(vec4 vPositionFromLight,float depthMetric,highp sampler2DShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\nvec2 uvw0=4.-3.*st;\nvec2 uvw1=vec2(7.);\nvec2 uvw2=1.+3.*st;\nvec3 u=vec3((3.-2.*st.x)/uvw0.x-2.,(3.+st.x)/uvw1.x,st.x/uvw2.x+2.)*shadowMapSizeAndInverse.y;\nvec3 v=vec3((3.-2.*st.y)/uvw0.y-2.,(3.+st.y)/uvw1.y,st.y/uvw2.y+2.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[0]),uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[0]),uvDepth.z));\nshadow+=uvw2.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[2],v[0]),uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[1]),uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[1]),uvDepth.z));\nshadow+=uvw2.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[2],v[1]),uvDepth.z));\nshadow+=uvw0.x*uvw2.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[2]),uvDepth.z));\nshadow+=uvw1.x*uvw2.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[2]),uvDepth.z));\nshadow+=uvw2.x*uvw2.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[2],v[2]),uvDepth.z));\nshadow=shadow/144.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\nconst vec3 PoissonSamplers32[64]=vec3[64](\nvec3(0.06407013,0.05409927,0.),\nvec3(0.7366577,0.5789394,0.),\nvec3(-0.6270542,-0.5320278,0.),\nvec3(-0.4096107,0.8411095,0.),\nvec3(0.6849564,-0.4990818,0.),\nvec3(-0.874181,-0.04579735,0.),\nvec3(0.9989998,0.0009880066,0.),\nvec3(-0.004920578,-0.9151649,0.),\nvec3(0.1805763,0.9747483,0.),\nvec3(-0.2138451,0.2635818,0.),\nvec3(0.109845,0.3884785,0.),\nvec3(0.06876755,-0.3581074,0.),\nvec3(0.374073,-0.7661266,0.),\nvec3(0.3079132,-0.1216763,0.),\nvec3(-0.3794335,-0.8271583,0.),\nvec3(-0.203878,-0.07715034,0.),\nvec3(0.5912697,0.1469799,0.),\nvec3(-0.88069,0.3031784,0.),\nvec3(0.5040108,0.8283722,0.),\nvec3(-0.5844124,0.5494877,0.),\nvec3(0.6017799,-0.1726654,0.),\nvec3(-0.5554981,0.1559997,0.),\nvec3(-0.3016369,-0.3900928,0.),\nvec3(-0.5550632,-0.1723762,0.),\nvec3(0.925029,0.2995041,0.),\nvec3(-0.2473137,0.5538505,0.),\nvec3(0.9183037,-0.2862392,0.),\nvec3(0.2469421,0.6718712,0.),\nvec3(0.3916397,-0.4328209,0.),\nvec3(-0.03576927,-0.6220032,0.),\nvec3(-0.04661255,0.7995201,0.),\nvec3(0.4402924,0.3640312,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.)\n);\nconst vec3 PoissonSamplers64[64]=vec3[64](\nvec3(-0.613392,0.617481,0.),\nvec3(0.170019,-0.040254,0.),\nvec3(-0.299417,0.791925,0.),\nvec3(0.645680,0.493210,0.),\nvec3(-0.651784,0.717887,0.),\nvec3(0.421003,0.027070,0.),\nvec3(-0.817194,-0.271096,0.),\nvec3(-0.705374,-0.668203,0.),\nvec3(0.977050,-0.108615,0.),\nvec3(0.063326,0.142369,0.),\nvec3(0.203528,0.214331,0.),\nvec3(-0.667531,0.326090,0.),\nvec3(-0.098422,-0.295755,0.),\nvec3(-0.885922,0.215369,0.),\nvec3(0.566637,0.605213,0.),\nvec3(0.039766,-0.396100,0.),\nvec3(0.751946,0.453352,0.),\nvec3(0.078707,-0.715323,0.),\nvec3(-0.075838,-0.529344,0.),\nvec3(0.724479,-0.580798,0.),\nvec3(0.222999,-0.215125,0.),\nvec3(-0.467574,-0.405438,0.),\nvec3(-0.248268,-0.814753,0.),\nvec3(0.354411,-0.887570,0.),\nvec3(0.175817,0.382366,0.),\nvec3(0.487472,-0.063082,0.),\nvec3(-0.084078,0.898312,0.),\nvec3(0.488876,-0.783441,0.),\nvec3(0.470016,0.217933,0.),\nvec3(-0.696890,-0.549791,0.),\nvec3(-0.149693,0.605762,0.),\nvec3(0.034211,0.979980,0.),\nvec3(0.503098,-0.308878,0.),\nvec3(-0.016205,-0.872921,0.),\nvec3(0.385784,-0.393902,0.),\nvec3(-0.146886,-0.859249,0.),\nvec3(0.643361,0.164098,0.),\nvec3(0.634388,-0.049471,0.),\nvec3(-0.688894,0.007843,0.),\nvec3(0.464034,-0.188818,0.),\nvec3(-0.440840,0.137486,0.),\nvec3(0.364483,0.511704,0.),\nvec3(0.034028,0.325968,0.),\nvec3(0.099094,-0.308023,0.),\nvec3(0.693960,-0.366253,0.),\nvec3(0.678884,-0.204688,0.),\nvec3(0.001801,0.780328,0.),\nvec3(0.145177,-0.898984,0.),\nvec3(0.062655,-0.611866,0.),\nvec3(0.315226,-0.604297,0.),\nvec3(-0.780145,0.486251,0.),\nvec3(-0.371868,0.882138,0.),\nvec3(0.200476,0.494430,0.),\nvec3(-0.494552,-0.711051,0.),\nvec3(0.612476,0.705252,0.),\nvec3(-0.578845,-0.768792,0.),\nvec3(-0.772454,-0.090976,0.),\nvec3(0.504440,0.372295,0.),\nvec3(0.155736,0.065157,0.),\nvec3(0.391522,0.849605,0.),\nvec3(-0.620106,-0.328104,0.),\nvec3(0.789239,-0.419965,0.),\nvec3(-0.545396,0.538133,0.),\nvec3(-0.178564,-0.596057,0.)\n);\n\n\n\n\n\n#define inline\nfloat computeShadowWithCSMPCSS(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,int searchTapCount,int pcfTapCount,vec3[64] poissonSamplers,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec4 uvDepthLayer=vec4(uvDepth.x,uvDepth.y,layer,uvDepth.z);\nfloat blockerDepth=0.0;\nfloat sumBlockerDepth=0.0;\nfloat numBlocker=0.0;\nfor (int i=0; i<searchTapCount; i ++) {\nblockerDepth=texture2D(depthSampler,vec3(uvDepth.xy+(lightSizeUV*lightSizeUVCorrection*shadowMapSizeInverse*PoissonSamplers32[i].xy),layer)).r;\nif (blockerDepth<depthMetric) {\nsumBlockerDepth+=blockerDepth;\nnumBlocker++;\n}\n}\nif (numBlocker<1.0) {\nreturn 1.0;\n}\nelse\n{\nfloat avgBlockerDepth=sumBlockerDepth/numBlocker;\n\nfloat AAOffset=shadowMapSizeInverse*10.;\n\n\nfloat penumbraRatio=((depthMetric-avgBlockerDepth)*depthCorrection+AAOffset);\nvec4 filterRadius=vec4(penumbraRatio*lightSizeUV*lightSizeUVCorrection*shadowMapSizeInverse,0.,0.);\nfloat random=getRand(vPositionFromLight.xy);\nfloat rotationAngle=random*3.1415926;\nvec2 rotationVector=vec2(cos(rotationAngle),sin(rotationAngle));\nfloat shadow=0.;\nfor (int i=0; i<pcfTapCount; i++) {\nvec4 offset=vec4(poissonSamplers[i],0.);\n\noffset=vec4(offset.x*rotationVector.x-offset.y*rotationVector.y,offset.y*rotationVector.x+offset.x*rotationVector.y,0.,0.);\nshadow+=texture2D(shadowSampler,uvDepthLayer+offset*filterRadius);\n}\nshadow/=float(pcfTapCount);\n\nshadow=mix(shadow,1.,min((depthMetric-avgBlockerDepth)*depthCorrection*penumbraDarkness,1.));\n\nshadow=mix(darkness,1.,shadow);\n\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n\n\n\n\n\n#define inline\nfloat computeShadowWithPCSS(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,highp sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,int searchTapCount,int pcfTapCount,vec3[64] poissonSamplers)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nfloat blockerDepth=0.0;\nfloat sumBlockerDepth=0.0;\nfloat numBlocker=0.0;\nfor (int i=0; i<searchTapCount; i ++) {\nblockerDepth=texture2D(depthSampler,uvDepth.xy+(lightSizeUV*shadowMapSizeInverse*PoissonSamplers32[i].xy)).r;\nif (blockerDepth<depthMetric) {\nsumBlockerDepth+=blockerDepth;\nnumBlocker++;\n}\n}\nif (numBlocker<1.0) {\nreturn 1.0;\n}\nelse\n{\nfloat avgBlockerDepth=sumBlockerDepth/numBlocker;\n\nfloat AAOffset=shadowMapSizeInverse*10.;\n\n\nfloat penumbraRatio=((depthMetric-avgBlockerDepth)+AAOffset);\nfloat filterRadius=penumbraRatio*lightSizeUV*shadowMapSizeInverse;\nfloat random=getRand(vPositionFromLight.xy);\nfloat rotationAngle=random*3.1415926;\nvec2 rotationVector=vec2(cos(rotationAngle),sin(rotationAngle));\nfloat shadow=0.;\nfor (int i=0; i<pcfTapCount; i++) {\nvec3 offset=poissonSamplers[i];\n\noffset=vec3(offset.x*rotationVector.x-offset.y*rotationVector.y,offset.y*rotationVector.x+offset.x*rotationVector.y,0.);\nshadow+=texture2D(shadowSampler,uvDepth+offset*filterRadius);\n}\nshadow/=float(pcfTapCount);\n\nshadow=mix(shadow,1.,depthMetric-avgBlockerDepth);\n\nshadow=mix(darkness,1.,shadow);\n\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n}\n#define inline\nfloat computeShadowWithPCSS16(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,highp sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff)\n{\nreturn computeShadowWithPCSS(vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,16,PoissonSamplers32);\n}\n#define inline\nfloat computeShadowWithPCSS32(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,highp sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff)\n{\nreturn computeShadowWithPCSS(vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,32,PoissonSamplers32);\n}\n#define inline\nfloat computeShadowWithPCSS64(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,highp sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff)\n{\nreturn computeShadowWithPCSS(vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,32,64,PoissonSamplers64);\n}\n#define inline\nfloat computeShadowWithCSMPCSS16(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nreturn computeShadowWithCSMPCSS(layer,vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,16,PoissonSamplers32,lightSizeUVCorrection,depthCorrection,penumbraDarkness);\n}\n#define inline\nfloat computeShadowWithCSMPCSS32(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nreturn computeShadowWithCSMPCSS(layer,vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,32,PoissonSamplers32,lightSizeUVCorrection,depthCorrection,penumbraDarkness);\n}\n#define inline\nfloat computeShadowWithCSMPCSS64(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nreturn computeShadowWithCSMPCSS(layer,vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,32,64,PoissonSamplers64,lightSizeUVCorrection,depthCorrection,penumbraDarkness);\n}\n#endif\n#endif\n";
 ShaderStore.IncludesShadersStore[name$N] = shader$N;
 
-var name$M = 'lightUboDeclaration';
-var shader$M = "#ifdef LIGHT{X}\nuniform Light{X}\n{\nvec4 vLightData;\nvec4 vLightDiffuse;\nvec4 vLightSpecular;\n#ifdef SPOTLIGHT{X}\nvec4 vLightDirection;\nvec4 vLightFalloff;\n#elif defined(POINTLIGHT{X})\nvec4 vLightFalloff;\n#elif defined(HEMILIGHT{X})\nvec3 vLightGround;\n#endif\nvec4 shadowsInfo;\nvec2 depthValues;\n} light{X};\n#ifdef PROJECTEDLIGHTTEXTURE{X}\nuniform mat4 textureProjectionMatrix{X};\nuniform sampler2D projectionLightSampler{X};\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float viewFrustumZ{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float frustumLengths{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float cascadeBlendFactor{X};\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\nuniform highp sampler2DArray depthSampler{X};\nuniform vec2 lightSizeUVCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float depthCorrection{X}[SHADOWCSMNUM_CASCADES{X}];\nuniform float penumbraDarkness{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DArrayShadow shadowSampler{X};\n#else\nuniform highp sampler2DArray shadowSampler{X};\n#endif\n#ifdef SHADOWCSMDEBUG{X}\nconst vec3 vCascadeColorsMultiplier{X}[8]=vec3[8]\n(\nvec3 ( 1.5,0.0,0.0 ),\nvec3 ( 0.0,1.5,0.0 ),\nvec3 ( 0.0,0.0,5.5 ),\nvec3 ( 1.5,0.0,5.5 ),\nvec3 ( 1.5,1.5,0.0 ),\nvec3 ( 1.0,1.0,1.0 ),\nvec3 ( 0.0,1.0,5.5 ),\nvec3 ( 0.5,3.5,0.75 )\n);\nvec3 shadowDebug{X};\n#endif\n#ifdef SHADOWCSMUSESHADOWMAXZ{X}\nint index{X}=-1;\n#else\nint index{X}=SHADOWCSMNUM_CASCADES{X}-1;\n#endif\nfloat diff{X}=0.;\n#elif defined(SHADOWCUBE{X})\nuniform samplerCube shadowSampler{X};\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\n#if defined(SHADOWPCSS{X})\nuniform highp sampler2DShadow shadowSampler{X};\nuniform highp sampler2D depthSampler{X};\n#elif defined(SHADOWPCF{X})\nuniform highp sampler2DShadow shadowSampler{X};\n#else\nuniform sampler2D shadowSampler{X};\n#endif\nuniform mat4 lightMatrix{X};\n#endif\n#endif\n#endif";
+var name$M = 'samplerFragmentDeclaration';
+var shader$M = "#ifdef _DEFINENAME_\n#if _DEFINENAME_DIRECTUV == 1\n#define v_VARYINGNAME_UV vMainUV1\n#elif _DEFINENAME_DIRECTUV == 2\n#define v_VARYINGNAME_UV vMainUV2\n#elif _DEFINENAME_DIRECTUV == 3\n#define v_VARYINGNAME_UV vMainUV3\n#elif _DEFINENAME_DIRECTUV == 4\n#define v_VARYINGNAME_UV vMainUV4\n#elif _DEFINENAME_DIRECTUV == 5\n#define v_VARYINGNAME_UV vMainUV5\n#elif _DEFINENAME_DIRECTUV == 6\n#define v_VARYINGNAME_UV vMainUV6\n#else\nvarying vec2 v_VARYINGNAME_UV;\n#endif\nuniform sampler2D _SAMPLERNAME_Sampler;\n#endif\n";
 ShaderStore.IncludesShadersStore[name$M] = shader$M;
 
-var name$L = 'lightsFragmentFunctions';
-var shader$L = "\nstruct lightingInfo\n{\nvec3 diffuse;\n#ifdef SPECULARTERM\nvec3 specular;\n#endif\n#ifdef NDOTL\nfloat ndl;\n#endif\n};\nlightingInfo computeLighting(vec3 viewDirectionW,vec3 vNormal,vec4 lightData,vec3 diffuseColor,vec3 specularColor,float range,float glossiness) {\nlightingInfo result;\nvec3 lightVectorW;\nfloat attenuation=1.0;\nif (lightData.w == 0.)\n{\nvec3 direction=lightData.xyz-vPositionW;\nattenuation=max(0.,1.0-length(direction)/range);\nlightVectorW=normalize(direction);\n}\nelse\n{\nlightVectorW=normalize(-lightData.xyz);\n}\n\nfloat ndl=max(0.,dot(vNormal,lightVectorW));\n#ifdef NDOTL\nresult.ndl=ndl;\n#endif\nresult.diffuse=ndl*diffuseColor*attenuation;\n#ifdef SPECULARTERM\n\nvec3 angleW=normalize(viewDirectionW+lightVectorW);\nfloat specComp=max(0.,dot(vNormal,angleW));\nspecComp=pow(specComp,max(1.,glossiness));\nresult.specular=specComp*specularColor*attenuation;\n#endif\nreturn result;\n}\nlightingInfo computeSpotLighting(vec3 viewDirectionW,vec3 vNormal,vec4 lightData,vec4 lightDirection,vec3 diffuseColor,vec3 specularColor,float range,float glossiness) {\nlightingInfo result;\nvec3 direction=lightData.xyz-vPositionW;\nvec3 lightVectorW=normalize(direction);\nfloat attenuation=max(0.,1.0-length(direction)/range);\n\nfloat cosAngle=max(0.,dot(lightDirection.xyz,-lightVectorW));\nif (cosAngle>=lightDirection.w)\n{\ncosAngle=max(0.,pow(cosAngle,lightData.w));\nattenuation*=cosAngle;\n\nfloat ndl=max(0.,dot(vNormal,lightVectorW));\n#ifdef NDOTL\nresult.ndl=ndl;\n#endif\nresult.diffuse=ndl*diffuseColor*attenuation;\n#ifdef SPECULARTERM\n\nvec3 angleW=normalize(viewDirectionW+lightVectorW);\nfloat specComp=max(0.,dot(vNormal,angleW));\nspecComp=pow(specComp,max(1.,glossiness));\nresult.specular=specComp*specularColor*attenuation;\n#endif\nreturn result;\n}\nresult.diffuse=vec3(0.);\n#ifdef SPECULARTERM\nresult.specular=vec3(0.);\n#endif\n#ifdef NDOTL\nresult.ndl=0.;\n#endif\nreturn result;\n}\nlightingInfo computeHemisphericLighting(vec3 viewDirectionW,vec3 vNormal,vec4 lightData,vec3 diffuseColor,vec3 specularColor,vec3 groundColor,float glossiness) {\nlightingInfo result;\n\nfloat ndl=dot(vNormal,lightData.xyz)*0.5+0.5;\n#ifdef NDOTL\nresult.ndl=ndl;\n#endif\nresult.diffuse=mix(groundColor,diffuseColor,ndl);\n#ifdef SPECULARTERM\n\nvec3 angleW=normalize(viewDirectionW+lightData.xyz);\nfloat specComp=max(0.,dot(vNormal,angleW));\nspecComp=pow(specComp,max(1.,glossiness));\nresult.specular=specComp*specularColor;\n#endif\nreturn result;\n}\n#define inline\nvec3 computeProjectionTextureDiffuseLighting(sampler2D projectionLightSampler,mat4 textureProjectionMatrix){\nvec4 strq=textureProjectionMatrix*vec4(vPositionW,1.0);\nstrq/=strq.w;\nvec3 textureColor=texture2D(projectionLightSampler,strq.xy).rgb;\nreturn textureColor;\n}";
+var name$L = 'fresnelFunction';
+var shader$L = "#ifdef FRESNEL\nfloat computeFresnelTerm(vec3 viewDirection,vec3 worldNormal,float bias,float power)\n{\nfloat fresnelTerm=pow(bias+abs(dot(viewDirection,worldNormal)),power);\nreturn clamp(fresnelTerm,0.,1.);\n}\n#endif";
 ShaderStore.IncludesShadersStore[name$L] = shader$L;
 
-var name$K = 'shadowsFragmentFunctions';
-var shader$K = "#ifdef SHADOWS\n#ifndef SHADOWFLOAT\n\nfloat unpack(vec4 color)\n{\nconst vec4 bit_shift=vec4(1.0/(255.0*255.0*255.0),1.0/(255.0*255.0),1.0/255.0,1.0);\nreturn dot(color,bit_shift);\n}\n#endif\nfloat computeFallOff(float value,vec2 clipSpace,float frustumEdgeFalloff)\n{\nfloat mask=smoothstep(1.0-frustumEdgeFalloff,1.00000012,clamp(dot(clipSpace,clipSpace),0.,1.));\nreturn mix(value,1.0,mask);\n}\n#define inline\nfloat computeShadowCube(vec3 lightPosition,samplerCube shadowSampler,float darkness,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\ndepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\n#ifndef SHADOWFLOAT\nfloat shadow=unpack(textureCube(shadowSampler,directionToLight));\n#else\nfloat shadow=textureCube(shadowSampler,directionToLight).x;\n#endif\nreturn depth>shadow ? darkness : 1.0;\n}\n#define inline\nfloat computeShadowWithPoissonSamplingCube(vec3 lightPosition,samplerCube shadowSampler,float mapSize,float darkness,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\ndepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\nfloat visibility=1.;\nvec3 poissonDisk[4];\npoissonDisk[0]=vec3(-1.0,1.0,-1.0);\npoissonDisk[1]=vec3(1.0,-1.0,-1.0);\npoissonDisk[2]=vec3(-1.0,-1.0,-1.0);\npoissonDisk[3]=vec3(1.0,-1.0,1.0);\n\n#ifndef SHADOWFLOAT\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[0]*mapSize))<depth) visibility-=0.25;\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[1]*mapSize))<depth) visibility-=0.25;\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[2]*mapSize))<depth) visibility-=0.25;\nif (unpack(textureCube(shadowSampler,directionToLight+poissonDisk[3]*mapSize))<depth) visibility-=0.25;\n#else\nif (textureCube(shadowSampler,directionToLight+poissonDisk[0]*mapSize).x<depth) visibility-=0.25;\nif (textureCube(shadowSampler,directionToLight+poissonDisk[1]*mapSize).x<depth) visibility-=0.25;\nif (textureCube(shadowSampler,directionToLight+poissonDisk[2]*mapSize).x<depth) visibility-=0.25;\nif (textureCube(shadowSampler,directionToLight+poissonDisk[3]*mapSize).x<depth) visibility-=0.25;\n#endif\nreturn min(1.0,visibility+darkness);\n}\n#define inline\nfloat computeShadowWithESMCube(vec3 lightPosition,samplerCube shadowSampler,float darkness,float depthScale,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\nfloat shadowPixelDepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(textureCube(shadowSampler,directionToLight));\n#else\nfloat shadowMapSample=textureCube(shadowSampler,directionToLight).x;\n#endif\nfloat esm=1.0-clamp(exp(min(87.,depthScale*shadowPixelDepth))*shadowMapSample,0.,1.-darkness);\nreturn esm;\n}\n#define inline\nfloat computeShadowWithCloseESMCube(vec3 lightPosition,samplerCube shadowSampler,float darkness,float depthScale,vec2 depthValues)\n{\nvec3 directionToLight=vPositionW-lightPosition;\nfloat depth=length(directionToLight);\ndepth=(depth+depthValues.x)/(depthValues.y);\nfloat shadowPixelDepth=clamp(depth,0.,1.0);\ndirectionToLight=normalize(directionToLight);\ndirectionToLight.y=-directionToLight.y;\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(textureCube(shadowSampler,directionToLight));\n#else\nfloat shadowMapSample=textureCube(shadowSampler,directionToLight).x;\n#endif\nfloat esm=clamp(exp(min(87.,-depthScale*(shadowPixelDepth-shadowMapSample))),darkness,1.);\nreturn esm;\n}\n#if defined(WEBGL2) || defined(WEBGPU)\n#define inline\nfloat computeShadowCSM(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nvec3 uvLayer=vec3(uv.x,uv.y,layer);\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadow=unpack(texture2D(shadowSampler,uvLayer));\n#else\nfloat shadow=texture2D(shadowSampler,uvLayer).x;\n#endif\nreturn shadowPixelDepth>shadow ? computeFallOff(darkness,clipSpace.xy,frustumEdgeFalloff) : 1.;\n}\n#endif\n#define inline\nfloat computeShadow(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadow=unpack(texture2D(shadowSampler,uv));\n#else\nfloat shadow=texture2D(shadowSampler,uv).x;\n#endif\nreturn shadowPixelDepth>shadow ? computeFallOff(darkness,clipSpace.xy,frustumEdgeFalloff) : 1.;\n}\n}\n#define inline\nfloat computeShadowWithPoissonSampling(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float mapSize,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\nfloat visibility=1.;\nvec2 poissonDisk[4];\npoissonDisk[0]=vec2(-0.94201624,-0.39906216);\npoissonDisk[1]=vec2(0.94558609,-0.76890725);\npoissonDisk[2]=vec2(-0.094184101,-0.92938870);\npoissonDisk[3]=vec2(0.34495938,0.29387760);\n\n#ifndef SHADOWFLOAT\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[0]*mapSize))<shadowPixelDepth) visibility-=0.25;\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[1]*mapSize))<shadowPixelDepth) visibility-=0.25;\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[2]*mapSize))<shadowPixelDepth) visibility-=0.25;\nif (unpack(texture2D(shadowSampler,uv+poissonDisk[3]*mapSize))<shadowPixelDepth) visibility-=0.25;\n#else\nif (texture2D(shadowSampler,uv+poissonDisk[0]*mapSize).x<shadowPixelDepth) visibility-=0.25;\nif (texture2D(shadowSampler,uv+poissonDisk[1]*mapSize).x<shadowPixelDepth) visibility-=0.25;\nif (texture2D(shadowSampler,uv+poissonDisk[2]*mapSize).x<shadowPixelDepth) visibility-=0.25;\nif (texture2D(shadowSampler,uv+poissonDisk[3]*mapSize).x<shadowPixelDepth) visibility-=0.25;\n#endif\nreturn computeFallOff(min(1.0,visibility+darkness),clipSpace.xy,frustumEdgeFalloff);\n}\n}\n#define inline\nfloat computeShadowWithESM(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float darkness,float depthScale,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(texture2D(shadowSampler,uv));\n#else\nfloat shadowMapSample=texture2D(shadowSampler,uv).x;\n#endif\nfloat esm=1.0-clamp(exp(min(87.,depthScale*shadowPixelDepth))*shadowMapSample,0.,1.-darkness);\nreturn computeFallOff(esm,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n#define inline\nfloat computeShadowWithCloseESM(vec4 vPositionFromLight,float depthMetric,sampler2D shadowSampler,float darkness,float depthScale,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec2 uv=0.5*clipSpace.xy+vec2(0.5);\nif (uv.x<0. || uv.x>1.0 || uv.y<0. || uv.y>1.0)\n{\nreturn 1.0;\n}\nelse\n{\nfloat shadowPixelDepth=clamp(depthMetric,0.,1.0);\n#ifndef SHADOWFLOAT\nfloat shadowMapSample=unpack(texture2D(shadowSampler,uv));\n#else\nfloat shadowMapSample=texture2D(shadowSampler,uv).x;\n#endif\nfloat esm=clamp(exp(min(87.,-depthScale*(shadowPixelDepth-shadowMapSample))),darkness,1.);\nreturn computeFallOff(esm,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n#ifdef IS_NDC_HALF_ZRANGE\n#define ZINCLIP clipSpace.z\n#else\n#define ZINCLIP uvDepth.z\n#endif\n#if defined(WEBGL2) || defined(WEBGPU)\n#define GREATEST_LESS_THAN_ONE 0.99999994\n\n#define inline\nfloat computeShadowWithCSMPCF1(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArrayShadow shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec4 uvDepthLayer=vec4(uvDepth.x,uvDepth.y,layer,uvDepth.z);\nfloat shadow=texture2D(shadowSampler,uvDepthLayer);\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n\n\n\n#define inline\nfloat computeShadowWithCSMPCF3(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArrayShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\n\n\nvec2 uvw0=3.-2.*st;\nvec2 uvw1=1.+2.*st;\nvec2 u=vec2((2.-st.x)/uvw0.x-1.,st.x/uvw1.x+1.)*shadowMapSizeAndInverse.y;\nvec2 v=vec2((2.-st.y)/uvw0.y-1.,st.y/uvw1.y+1.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[0]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[0]),layer,uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[1]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[1]),layer,uvDepth.z));\nshadow=shadow/16.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n\n\n\n#define inline\nfloat computeShadowWithCSMPCF5(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArrayShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\nvec2 uvw0=4.-3.*st;\nvec2 uvw1=vec2(7.);\nvec2 uvw2=1.+3.*st;\nvec3 u=vec3((3.-2.*st.x)/uvw0.x-2.,(3.+st.x)/uvw1.x,st.x/uvw2.x+2.)*shadowMapSizeAndInverse.y;\nvec3 v=vec3((3.-2.*st.y)/uvw0.y-2.,(3.+st.y)/uvw1.y,st.y/uvw2.y+2.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[0]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[0]),layer,uvDepth.z));\nshadow+=uvw2.x*uvw0.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[2],v[0]),layer,uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[1]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[1]),layer,uvDepth.z));\nshadow+=uvw2.x*uvw1.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[2],v[1]),layer,uvDepth.z));\nshadow+=uvw0.x*uvw2.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[0],v[2]),layer,uvDepth.z));\nshadow+=uvw1.x*uvw2.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[1],v[2]),layer,uvDepth.z));\nshadow+=uvw2.x*uvw2.y*texture2D(shadowSampler,vec4(base_uv.xy+vec2(u[2],v[2]),layer,uvDepth.z));\nshadow=shadow/144.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n\n#define inline\nfloat computeShadowWithPCF1(vec4 vPositionFromLight,float depthMetric,sampler2DShadow shadowSampler,float darkness,float frustumEdgeFalloff)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nfloat shadow=texture2D(shadowSampler,uvDepth);\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n\n\n\n#define inline\nfloat computeShadowWithPCF3(vec4 vPositionFromLight,float depthMetric,sampler2DShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\n\n\nvec2 uvw0=3.-2.*st;\nvec2 uvw1=1.+2.*st;\nvec2 u=vec2((2.-st.x)/uvw0.x-1.,st.x/uvw1.x+1.)*shadowMapSizeAndInverse.y;\nvec2 v=vec2((2.-st.y)/uvw0.y-1.,st.y/uvw1.y+1.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[0]),uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[0]),uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[1]),uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[1]),uvDepth.z));\nshadow=shadow/16.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n\n\n\n#define inline\nfloat computeShadowWithPCF5(vec4 vPositionFromLight,float depthMetric,sampler2DShadow shadowSampler,vec2 shadowMapSizeAndInverse,float darkness,float frustumEdgeFalloff)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nvec2 uv=uvDepth.xy*shadowMapSizeAndInverse.x;\nuv+=0.5;\nvec2 st=fract(uv);\nvec2 base_uv=floor(uv)-0.5;\nbase_uv*=shadowMapSizeAndInverse.y;\n\n\nvec2 uvw0=4.-3.*st;\nvec2 uvw1=vec2(7.);\nvec2 uvw2=1.+3.*st;\nvec3 u=vec3((3.-2.*st.x)/uvw0.x-2.,(3.+st.x)/uvw1.x,st.x/uvw2.x+2.)*shadowMapSizeAndInverse.y;\nvec3 v=vec3((3.-2.*st.y)/uvw0.y-2.,(3.+st.y)/uvw1.y,st.y/uvw2.y+2.)*shadowMapSizeAndInverse.y;\nfloat shadow=0.;\nshadow+=uvw0.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[0]),uvDepth.z));\nshadow+=uvw1.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[0]),uvDepth.z));\nshadow+=uvw2.x*uvw0.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[2],v[0]),uvDepth.z));\nshadow+=uvw0.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[1]),uvDepth.z));\nshadow+=uvw1.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[1]),uvDepth.z));\nshadow+=uvw2.x*uvw1.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[2],v[1]),uvDepth.z));\nshadow+=uvw0.x*uvw2.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[0],v[2]),uvDepth.z));\nshadow+=uvw1.x*uvw2.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[1],v[2]),uvDepth.z));\nshadow+=uvw2.x*uvw2.y*texture2D(shadowSampler,vec3(base_uv.xy+vec2(u[2],v[2]),uvDepth.z));\nshadow=shadow/144.;\nshadow=mix(darkness,1.,shadow);\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\nconst vec3 PoissonSamplers32[64]=vec3[64](\nvec3(0.06407013,0.05409927,0.),\nvec3(0.7366577,0.5789394,0.),\nvec3(-0.6270542,-0.5320278,0.),\nvec3(-0.4096107,0.8411095,0.),\nvec3(0.6849564,-0.4990818,0.),\nvec3(-0.874181,-0.04579735,0.),\nvec3(0.9989998,0.0009880066,0.),\nvec3(-0.004920578,-0.9151649,0.),\nvec3(0.1805763,0.9747483,0.),\nvec3(-0.2138451,0.2635818,0.),\nvec3(0.109845,0.3884785,0.),\nvec3(0.06876755,-0.3581074,0.),\nvec3(0.374073,-0.7661266,0.),\nvec3(0.3079132,-0.1216763,0.),\nvec3(-0.3794335,-0.8271583,0.),\nvec3(-0.203878,-0.07715034,0.),\nvec3(0.5912697,0.1469799,0.),\nvec3(-0.88069,0.3031784,0.),\nvec3(0.5040108,0.8283722,0.),\nvec3(-0.5844124,0.5494877,0.),\nvec3(0.6017799,-0.1726654,0.),\nvec3(-0.5554981,0.1559997,0.),\nvec3(-0.3016369,-0.3900928,0.),\nvec3(-0.5550632,-0.1723762,0.),\nvec3(0.925029,0.2995041,0.),\nvec3(-0.2473137,0.5538505,0.),\nvec3(0.9183037,-0.2862392,0.),\nvec3(0.2469421,0.6718712,0.),\nvec3(0.3916397,-0.4328209,0.),\nvec3(-0.03576927,-0.6220032,0.),\nvec3(-0.04661255,0.7995201,0.),\nvec3(0.4402924,0.3640312,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.),\nvec3(0.,0.,0.)\n);\nconst vec3 PoissonSamplers64[64]=vec3[64](\nvec3(-0.613392,0.617481,0.),\nvec3(0.170019,-0.040254,0.),\nvec3(-0.299417,0.791925,0.),\nvec3(0.645680,0.493210,0.),\nvec3(-0.651784,0.717887,0.),\nvec3(0.421003,0.027070,0.),\nvec3(-0.817194,-0.271096,0.),\nvec3(-0.705374,-0.668203,0.),\nvec3(0.977050,-0.108615,0.),\nvec3(0.063326,0.142369,0.),\nvec3(0.203528,0.214331,0.),\nvec3(-0.667531,0.326090,0.),\nvec3(-0.098422,-0.295755,0.),\nvec3(-0.885922,0.215369,0.),\nvec3(0.566637,0.605213,0.),\nvec3(0.039766,-0.396100,0.),\nvec3(0.751946,0.453352,0.),\nvec3(0.078707,-0.715323,0.),\nvec3(-0.075838,-0.529344,0.),\nvec3(0.724479,-0.580798,0.),\nvec3(0.222999,-0.215125,0.),\nvec3(-0.467574,-0.405438,0.),\nvec3(-0.248268,-0.814753,0.),\nvec3(0.354411,-0.887570,0.),\nvec3(0.175817,0.382366,0.),\nvec3(0.487472,-0.063082,0.),\nvec3(-0.084078,0.898312,0.),\nvec3(0.488876,-0.783441,0.),\nvec3(0.470016,0.217933,0.),\nvec3(-0.696890,-0.549791,0.),\nvec3(-0.149693,0.605762,0.),\nvec3(0.034211,0.979980,0.),\nvec3(0.503098,-0.308878,0.),\nvec3(-0.016205,-0.872921,0.),\nvec3(0.385784,-0.393902,0.),\nvec3(-0.146886,-0.859249,0.),\nvec3(0.643361,0.164098,0.),\nvec3(0.634388,-0.049471,0.),\nvec3(-0.688894,0.007843,0.),\nvec3(0.464034,-0.188818,0.),\nvec3(-0.440840,0.137486,0.),\nvec3(0.364483,0.511704,0.),\nvec3(0.034028,0.325968,0.),\nvec3(0.099094,-0.308023,0.),\nvec3(0.693960,-0.366253,0.),\nvec3(0.678884,-0.204688,0.),\nvec3(0.001801,0.780328,0.),\nvec3(0.145177,-0.898984,0.),\nvec3(0.062655,-0.611866,0.),\nvec3(0.315226,-0.604297,0.),\nvec3(-0.780145,0.486251,0.),\nvec3(-0.371868,0.882138,0.),\nvec3(0.200476,0.494430,0.),\nvec3(-0.494552,-0.711051,0.),\nvec3(0.612476,0.705252,0.),\nvec3(-0.578845,-0.768792,0.),\nvec3(-0.772454,-0.090976,0.),\nvec3(0.504440,0.372295,0.),\nvec3(0.155736,0.065157,0.),\nvec3(0.391522,0.849605,0.),\nvec3(-0.620106,-0.328104,0.),\nvec3(0.789239,-0.419965,0.),\nvec3(-0.545396,0.538133,0.),\nvec3(-0.178564,-0.596057,0.)\n);\n\n\n\n\n\n#define inline\nfloat computeShadowWithCSMPCSS(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,int searchTapCount,int pcfTapCount,vec3[64] poissonSamplers,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=clamp(ZINCLIP,0.,GREATEST_LESS_THAN_ONE);\nvec4 uvDepthLayer=vec4(uvDepth.x,uvDepth.y,layer,uvDepth.z);\nfloat blockerDepth=0.0;\nfloat sumBlockerDepth=0.0;\nfloat numBlocker=0.0;\nfor (int i=0; i<searchTapCount; i ++) {\nblockerDepth=texture2D(depthSampler,vec3(uvDepth.xy+(lightSizeUV*lightSizeUVCorrection*shadowMapSizeInverse*PoissonSamplers32[i].xy),layer)).r;\nif (blockerDepth<depthMetric) {\nsumBlockerDepth+=blockerDepth;\nnumBlocker++;\n}\n}\nif (numBlocker<1.0) {\nreturn 1.0;\n}\nelse\n{\nfloat avgBlockerDepth=sumBlockerDepth/numBlocker;\n\nfloat AAOffset=shadowMapSizeInverse*10.;\n\n\nfloat penumbraRatio=((depthMetric-avgBlockerDepth)*depthCorrection+AAOffset);\nvec4 filterRadius=vec4(penumbraRatio*lightSizeUV*lightSizeUVCorrection*shadowMapSizeInverse,0.,0.);\nfloat random=getRand(vPositionFromLight.xy);\nfloat rotationAngle=random*3.1415926;\nvec2 rotationVector=vec2(cos(rotationAngle),sin(rotationAngle));\nfloat shadow=0.;\nfor (int i=0; i<pcfTapCount; i++) {\nvec4 offset=vec4(poissonSamplers[i],0.);\n\noffset=vec4(offset.x*rotationVector.x-offset.y*rotationVector.y,offset.y*rotationVector.x+offset.x*rotationVector.y,0.,0.);\nshadow+=texture2D(shadowSampler,uvDepthLayer+offset*filterRadius);\n}\nshadow/=float(pcfTapCount);\n\nshadow=mix(shadow,1.,min((depthMetric-avgBlockerDepth)*depthCorrection*penumbraDarkness,1.));\n\nshadow=mix(darkness,1.,shadow);\n\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n\n\n\n\n\n#define inline\nfloat computeShadowWithPCSS(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,int searchTapCount,int pcfTapCount,vec3[64] poissonSamplers)\n{\nif (depthMetric>1.0 || depthMetric<0.0) {\nreturn 1.0;\n}\nelse\n{\nvec3 clipSpace=vPositionFromLight.xyz/vPositionFromLight.w;\nvec3 uvDepth=vec3(0.5*clipSpace.xyz+vec3(0.5));\nuvDepth.z=ZINCLIP;\nfloat blockerDepth=0.0;\nfloat sumBlockerDepth=0.0;\nfloat numBlocker=0.0;\nfor (int i=0; i<searchTapCount; i ++) {\nblockerDepth=texture2D(depthSampler,uvDepth.xy+(lightSizeUV*shadowMapSizeInverse*PoissonSamplers32[i].xy)).r;\nif (blockerDepth<depthMetric) {\nsumBlockerDepth+=blockerDepth;\nnumBlocker++;\n}\n}\nif (numBlocker<1.0) {\nreturn 1.0;\n}\nelse\n{\nfloat avgBlockerDepth=sumBlockerDepth/numBlocker;\n\nfloat AAOffset=shadowMapSizeInverse*10.;\n\n\nfloat penumbraRatio=((depthMetric-avgBlockerDepth)+AAOffset);\nfloat filterRadius=penumbraRatio*lightSizeUV*shadowMapSizeInverse;\nfloat random=getRand(vPositionFromLight.xy);\nfloat rotationAngle=random*3.1415926;\nvec2 rotationVector=vec2(cos(rotationAngle),sin(rotationAngle));\nfloat shadow=0.;\nfor (int i=0; i<pcfTapCount; i++) {\nvec3 offset=poissonSamplers[i];\n\noffset=vec3(offset.x*rotationVector.x-offset.y*rotationVector.y,offset.y*rotationVector.x+offset.x*rotationVector.y,0.);\nshadow+=texture2D(shadowSampler,uvDepth+offset*filterRadius);\n}\nshadow/=float(pcfTapCount);\n\nshadow=mix(shadow,1.,depthMetric-avgBlockerDepth);\n\nshadow=mix(darkness,1.,shadow);\n\nreturn computeFallOff(shadow,clipSpace.xy,frustumEdgeFalloff);\n}\n}\n}\n#define inline\nfloat computeShadowWithPCSS16(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff)\n{\nreturn computeShadowWithPCSS(vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,16,PoissonSamplers32);\n}\n#define inline\nfloat computeShadowWithPCSS32(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff)\n{\nreturn computeShadowWithPCSS(vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,32,PoissonSamplers32);\n}\n#define inline\nfloat computeShadowWithPCSS64(vec4 vPositionFromLight,float depthMetric,sampler2D depthSampler,sampler2DShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff)\n{\nreturn computeShadowWithPCSS(vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,32,64,PoissonSamplers64);\n}\n#define inline\nfloat computeShadowWithCSMPCSS16(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nreturn computeShadowWithCSMPCSS(layer,vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,16,PoissonSamplers32,lightSizeUVCorrection,depthCorrection,penumbraDarkness);\n}\n#define inline\nfloat computeShadowWithCSMPCSS32(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nreturn computeShadowWithCSMPCSS(layer,vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,16,32,PoissonSamplers32,lightSizeUVCorrection,depthCorrection,penumbraDarkness);\n}\n#define inline\nfloat computeShadowWithCSMPCSS64(float layer,vec4 vPositionFromLight,float depthMetric,highp sampler2DArray depthSampler,highp sampler2DArrayShadow shadowSampler,float shadowMapSizeInverse,float lightSizeUV,float darkness,float frustumEdgeFalloff,vec2 lightSizeUVCorrection,float depthCorrection,float penumbraDarkness)\n{\nreturn computeShadowWithCSMPCSS(layer,vPositionFromLight,depthMetric,depthSampler,shadowSampler,shadowMapSizeInverse,lightSizeUV,darkness,frustumEdgeFalloff,32,64,PoissonSamplers64,lightSizeUVCorrection,depthCorrection,penumbraDarkness);\n}\n#endif\n#endif\n";
+var name$K = 'reflectionFunction';
+var shader$K = "vec3 computeFixedEquirectangularCoords(vec4 worldPos,vec3 worldNormal,vec3 direction)\n{\nfloat lon=atan(direction.z,direction.x);\nfloat lat=acos(direction.y);\nvec2 sphereCoords=vec2(lon,lat)*RECIPROCAL_PI2*2.0;\nfloat s=sphereCoords.x*0.5+0.5;\nfloat t=sphereCoords.y;\nreturn vec3(s,t,0);\n}\nvec3 computeMirroredFixedEquirectangularCoords(vec4 worldPos,vec3 worldNormal,vec3 direction)\n{\nfloat lon=atan(direction.z,direction.x);\nfloat lat=acos(direction.y);\nvec2 sphereCoords=vec2(lon,lat)*RECIPROCAL_PI2*2.0;\nfloat s=sphereCoords.x*0.5+0.5;\nfloat t=sphereCoords.y;\nreturn vec3(1.0-s,t,0);\n}\nvec3 computeEquirectangularCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix)\n{\nvec3 cameraToVertex=normalize(worldPos.xyz-eyePosition);\nvec3 r=normalize(reflect(cameraToVertex,worldNormal));\nr=vec3(reflectionMatrix*vec4(r,0));\nfloat lon=atan(r.z,r.x);\nfloat lat=acos(r.y);\nvec2 sphereCoords=vec2(lon,lat)*RECIPROCAL_PI2*2.0;\nfloat s=sphereCoords.x*0.5+0.5;\nfloat t=sphereCoords.y;\nreturn vec3(s,t,0);\n}\nvec3 computeSphericalCoords(vec4 worldPos,vec3 worldNormal,mat4 view,mat4 reflectionMatrix)\n{\nvec3 viewDir=normalize(vec3(view*worldPos));\nvec3 viewNormal=normalize(vec3(view*vec4(worldNormal,0.0)));\nvec3 r=reflect(viewDir,viewNormal);\nr=vec3(reflectionMatrix*vec4(r,0));\nr.z=r.z-1.0;\nfloat m=2.0*length(r);\nreturn vec3(r.x/m+0.5,1.0-r.y/m-0.5,0);\n}\nvec3 computePlanarCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix)\n{\nvec3 viewDir=worldPos.xyz-eyePosition;\nvec3 coords=normalize(reflect(viewDir,worldNormal));\nreturn vec3(reflectionMatrix*vec4(coords,1));\n}\nvec3 computeCubicCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix)\n{\nvec3 viewDir=normalize(worldPos.xyz-eyePosition);\n\nvec3 coords=reflect(viewDir,worldNormal);\ncoords=vec3(reflectionMatrix*vec4(coords,0));\n#ifdef INVERTCUBICMAP\ncoords.y*=-1.0;\n#endif\nreturn coords;\n}\nvec3 computeCubicLocalCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix,vec3 reflectionSize,vec3 reflectionPosition)\n{\nvec3 viewDir=normalize(worldPos.xyz-eyePosition);\n\nvec3 coords=reflect(viewDir,worldNormal);\ncoords=parallaxCorrectNormal(worldPos.xyz,coords,reflectionSize,reflectionPosition);\ncoords=vec3(reflectionMatrix*vec4(coords,0));\n#ifdef INVERTCUBICMAP\ncoords.y*=-1.0;\n#endif\nreturn coords;\n}\nvec3 computeProjectionCoords(vec4 worldPos,mat4 view,mat4 reflectionMatrix)\n{\nreturn vec3(reflectionMatrix*(view*worldPos));\n}\nvec3 computeSkyBoxCoords(vec3 positionW,mat4 reflectionMatrix)\n{\nreturn vec3(reflectionMatrix*vec4(positionW,1.));\n}\n#ifdef REFLECTION\nvec3 computeReflectionCoords(vec4 worldPos,vec3 worldNormal)\n{\n#ifdef REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED\nvec3 direction=normalize(vDirectionW);\nreturn computeMirroredFixedEquirectangularCoords(worldPos,worldNormal,direction);\n#endif\n#ifdef REFLECTIONMAP_EQUIRECTANGULAR_FIXED\nvec3 direction=normalize(vDirectionW);\nreturn computeFixedEquirectangularCoords(worldPos,worldNormal,direction);\n#endif\n#ifdef REFLECTIONMAP_EQUIRECTANGULAR\nreturn computeEquirectangularCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_SPHERICAL\nreturn computeSphericalCoords(worldPos,worldNormal,view,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_PLANAR\nreturn computePlanarCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_CUBIC\n#ifdef USE_LOCAL_REFLECTIONMAP_CUBIC\nreturn computeCubicLocalCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix,vReflectionSize,vReflectionPosition);\n#else\nreturn computeCubicCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix);\n#endif\n#endif\n#ifdef REFLECTIONMAP_PROJECTION\nreturn computeProjectionCoords(worldPos,view,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_SKYBOX\nreturn computeSkyBoxCoords(vPositionUVW,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_EXPLICIT\nreturn vec3(0,0,0);\n#endif\n}\n#endif";
 ShaderStore.IncludesShadersStore[name$K] = shader$K;
 
-var name$J = 'samplerFragmentDeclaration';
-var shader$J = "#ifdef _DEFINENAME_\n#if _DEFINENAME_DIRECTUV == 1\n#define v_VARYINGNAME_UV vMainUV1\n#elif _DEFINENAME_DIRECTUV == 2\n#define v_VARYINGNAME_UV vMainUV2\n#elif _DEFINENAME_DIRECTUV == 3\n#define v_VARYINGNAME_UV vMainUV3\n#elif _DEFINENAME_DIRECTUV == 4\n#define v_VARYINGNAME_UV vMainUV4\n#elif _DEFINENAME_DIRECTUV == 5\n#define v_VARYINGNAME_UV vMainUV5\n#elif _DEFINENAME_DIRECTUV == 6\n#define v_VARYINGNAME_UV vMainUV6\n#else\nvarying vec2 v_VARYINGNAME_UV;\n#endif\nuniform sampler2D _SAMPLERNAME_Sampler;\n#endif\n";
+var name$J = 'imageProcessingDeclaration';
+var shader$J = "#ifdef EXPOSURE\nuniform float exposureLinear;\n#endif\n#ifdef CONTRAST\nuniform float contrast;\n#endif\n#ifdef VIGNETTE\nuniform vec2 vInverseScreenSize;\nuniform vec4 vignetteSettings1;\nuniform vec4 vignetteSettings2;\n#endif\n#ifdef COLORCURVES\nuniform vec4 vCameraColorCurveNegative;\nuniform vec4 vCameraColorCurveNeutral;\nuniform vec4 vCameraColorCurvePositive;\n#endif\n#ifdef COLORGRADING\n#ifdef COLORGRADING3D\nuniform highp sampler3D txColorTransform;\n#else\nuniform sampler2D txColorTransform;\n#endif\nuniform vec4 colorTransformSettings;\n#endif";
 ShaderStore.IncludesShadersStore[name$J] = shader$J;
 
-var name$I = 'fresnelFunction';
-var shader$I = "#ifdef FRESNEL\nfloat computeFresnelTerm(vec3 viewDirection,vec3 worldNormal,float bias,float power)\n{\nfloat fresnelTerm=pow(bias+abs(dot(viewDirection,worldNormal)),power);\nreturn clamp(fresnelTerm,0.,1.);\n}\n#endif";
+var name$I = 'imageProcessingFunctions';
+var shader$I = "#if defined(COLORGRADING) && !defined(COLORGRADING3D)\n\n#define inline\nvec3 sampleTexture3D(sampler2D colorTransform,vec3 color,vec2 sampler3dSetting)\n{\nfloat sliceSize=2.0*sampler3dSetting.x;\n#ifdef SAMPLER3DGREENDEPTH\nfloat sliceContinuous=(color.g-sampler3dSetting.x)*sampler3dSetting.y;\n#else\nfloat sliceContinuous=(color.b-sampler3dSetting.x)*sampler3dSetting.y;\n#endif\nfloat sliceInteger=floor(sliceContinuous);\n\n\nfloat sliceFraction=sliceContinuous-sliceInteger;\n#ifdef SAMPLER3DGREENDEPTH\nvec2 sliceUV=color.rb;\n#else\nvec2 sliceUV=color.rg;\n#endif\nsliceUV.x*=sliceSize;\nsliceUV.x+=sliceInteger*sliceSize;\nsliceUV=saturate(sliceUV);\nvec4 slice0Color=texture2D(colorTransform,sliceUV);\nsliceUV.x+=sliceSize;\nsliceUV=saturate(sliceUV);\nvec4 slice1Color=texture2D(colorTransform,sliceUV);\nvec3 result=mix(slice0Color.rgb,slice1Color.rgb,sliceFraction);\n#ifdef SAMPLER3DBGRMAP\ncolor.rgb=result.rgb;\n#else\ncolor.rgb=result.bgr;\n#endif\nreturn color;\n}\n#endif\n#ifdef TONEMAPPING_ACES\n\n\n\n\n\nconst mat3 ACESInputMat=mat3(\nvec3(0.59719,0.07600,0.02840),\nvec3(0.35458,0.90834,0.13383),\nvec3(0.04823,0.01566,0.83777)\n);\n\nconst mat3 ACESOutputMat=mat3(\nvec3( 1.60475,-0.10208,-0.00327),\nvec3(-0.53108,1.10813,-0.07276),\nvec3(-0.07367,-0.00605,1.07602)\n);\nvec3 RRTAndODTFit(vec3 v)\n{\nvec3 a=v*(v+0.0245786)-0.000090537;\nvec3 b=v*(0.983729*v+0.4329510)+0.238081;\nreturn a/b;\n}\nvec3 ACESFitted(vec3 color)\n{\ncolor=ACESInputMat*color;\n\ncolor=RRTAndODTFit(color);\ncolor=ACESOutputMat*color;\n\ncolor=saturate(color);\nreturn color;\n}\n#endif\nvec4 applyImageProcessing(vec4 result) {\n#ifdef EXPOSURE\nresult.rgb*=exposureLinear;\n#endif\n#ifdef VIGNETTE\n\nvec2 viewportXY=gl_FragCoord.xy*vInverseScreenSize;\nviewportXY=viewportXY*2.0-1.0;\nvec3 vignetteXY1=vec3(viewportXY*vignetteSettings1.xy+vignetteSettings1.zw,1.0);\nfloat vignetteTerm=dot(vignetteXY1,vignetteXY1);\nfloat vignette=pow(vignetteTerm,vignetteSettings2.w);\n\nvec3 vignetteColor=vignetteSettings2.rgb;\n#ifdef VIGNETTEBLENDMODEMULTIPLY\nvec3 vignetteColorMultiplier=mix(vignetteColor,vec3(1,1,1),vignette);\nresult.rgb*=vignetteColorMultiplier;\n#endif\n#ifdef VIGNETTEBLENDMODEOPAQUE\nresult.rgb=mix(vignetteColor,result.rgb,vignette);\n#endif\n#endif\n#ifdef TONEMAPPING\n#ifdef TONEMAPPING_ACES\nresult.rgb=ACESFitted(result.rgb);\n#else\nconst float tonemappingCalibration=1.590579;\nresult.rgb=1.0-exp2(-tonemappingCalibration*result.rgb);\n#endif\n#endif\n\nresult.rgb=toGammaSpace(result.rgb);\nresult.rgb=saturate(result.rgb);\n#ifdef CONTRAST\n\nvec3 resultHighContrast=result.rgb*result.rgb*(3.0-2.0*result.rgb);\nif (contrast<1.0) {\n\nresult.rgb=mix(vec3(0.5,0.5,0.5),result.rgb,contrast);\n} else {\n\nresult.rgb=mix(result.rgb,resultHighContrast,contrast-1.0);\n}\n#endif\n\n#ifdef COLORGRADING\nvec3 colorTransformInput=result.rgb*colorTransformSettings.xxx+colorTransformSettings.yyy;\n#ifdef COLORGRADING3D\nvec3 colorTransformOutput=texture(txColorTransform,colorTransformInput).rgb;\n#else\nvec3 colorTransformOutput=sampleTexture3D(txColorTransform,colorTransformInput,colorTransformSettings.yz).rgb;\n#endif\nresult.rgb=mix(result.rgb,colorTransformOutput,colorTransformSettings.www);\n#endif\n#ifdef COLORCURVES\n\nfloat luma=getLuminance(result.rgb);\nvec2 curveMix=clamp(vec2(luma*3.0-1.5,luma*-3.0+1.5),vec2(0.0),vec2(1.0));\nvec4 colorCurve=vCameraColorCurveNeutral+curveMix.x*vCameraColorCurvePositive-curveMix.y*vCameraColorCurveNegative;\nresult.rgb*=colorCurve.rgb;\nresult.rgb=mix(vec3(luma),result.rgb,colorCurve.a);\n#endif\nreturn result;\n}";
 ShaderStore.IncludesShadersStore[name$I] = shader$I;
 
-var name$H = 'reflectionFunction';
-var shader$H = "vec3 computeFixedEquirectangularCoords(vec4 worldPos,vec3 worldNormal,vec3 direction)\n{\nfloat lon=atan(direction.z,direction.x);\nfloat lat=acos(direction.y);\nvec2 sphereCoords=vec2(lon,lat)*RECIPROCAL_PI2*2.0;\nfloat s=sphereCoords.x*0.5+0.5;\nfloat t=sphereCoords.y;\nreturn vec3(s,t,0);\n}\nvec3 computeMirroredFixedEquirectangularCoords(vec4 worldPos,vec3 worldNormal,vec3 direction)\n{\nfloat lon=atan(direction.z,direction.x);\nfloat lat=acos(direction.y);\nvec2 sphereCoords=vec2(lon,lat)*RECIPROCAL_PI2*2.0;\nfloat s=sphereCoords.x*0.5+0.5;\nfloat t=sphereCoords.y;\nreturn vec3(1.0-s,t,0);\n}\nvec3 computeEquirectangularCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix)\n{\nvec3 cameraToVertex=normalize(worldPos.xyz-eyePosition);\nvec3 r=normalize(reflect(cameraToVertex,worldNormal));\nr=vec3(reflectionMatrix*vec4(r,0));\nfloat lon=atan(r.z,r.x);\nfloat lat=acos(r.y);\nvec2 sphereCoords=vec2(lon,lat)*RECIPROCAL_PI2*2.0;\nfloat s=sphereCoords.x*0.5+0.5;\nfloat t=sphereCoords.y;\nreturn vec3(s,t,0);\n}\nvec3 computeSphericalCoords(vec4 worldPos,vec3 worldNormal,mat4 view,mat4 reflectionMatrix)\n{\nvec3 viewDir=normalize(vec3(view*worldPos));\nvec3 viewNormal=normalize(vec3(view*vec4(worldNormal,0.0)));\nvec3 r=reflect(viewDir,viewNormal);\nr=vec3(reflectionMatrix*vec4(r,0));\nr.z=r.z-1.0;\nfloat m=2.0*length(r);\nreturn vec3(r.x/m+0.5,1.0-r.y/m-0.5,0);\n}\nvec3 computePlanarCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix)\n{\nvec3 viewDir=worldPos.xyz-eyePosition;\nvec3 coords=normalize(reflect(viewDir,worldNormal));\nreturn vec3(reflectionMatrix*vec4(coords,1));\n}\nvec3 computeCubicCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix)\n{\nvec3 viewDir=normalize(worldPos.xyz-eyePosition);\n\nvec3 coords=reflect(viewDir,worldNormal);\ncoords=vec3(reflectionMatrix*vec4(coords,0));\n#ifdef INVERTCUBICMAP\ncoords.y*=-1.0;\n#endif\nreturn coords;\n}\nvec3 computeCubicLocalCoords(vec4 worldPos,vec3 worldNormal,vec3 eyePosition,mat4 reflectionMatrix,vec3 reflectionSize,vec3 reflectionPosition)\n{\nvec3 viewDir=normalize(worldPos.xyz-eyePosition);\n\nvec3 coords=reflect(viewDir,worldNormal);\ncoords=parallaxCorrectNormal(worldPos.xyz,coords,reflectionSize,reflectionPosition);\ncoords=vec3(reflectionMatrix*vec4(coords,0));\n#ifdef INVERTCUBICMAP\ncoords.y*=-1.0;\n#endif\nreturn coords;\n}\nvec3 computeProjectionCoords(vec4 worldPos,mat4 view,mat4 reflectionMatrix)\n{\nreturn vec3(reflectionMatrix*(view*worldPos));\n}\nvec3 computeSkyBoxCoords(vec3 positionW,mat4 reflectionMatrix)\n{\nreturn vec3(reflectionMatrix*vec4(positionW,1.));\n}\n#ifdef REFLECTION\nvec3 computeReflectionCoords(vec4 worldPos,vec3 worldNormal)\n{\n#ifdef REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED\nvec3 direction=normalize(vDirectionW);\nreturn computeMirroredFixedEquirectangularCoords(worldPos,worldNormal,direction);\n#endif\n#ifdef REFLECTIONMAP_EQUIRECTANGULAR_FIXED\nvec3 direction=normalize(vDirectionW);\nreturn computeFixedEquirectangularCoords(worldPos,worldNormal,direction);\n#endif\n#ifdef REFLECTIONMAP_EQUIRECTANGULAR\nreturn computeEquirectangularCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_SPHERICAL\nreturn computeSphericalCoords(worldPos,worldNormal,view,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_PLANAR\nreturn computePlanarCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_CUBIC\n#ifdef USE_LOCAL_REFLECTIONMAP_CUBIC\nreturn computeCubicLocalCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix,vReflectionSize,vReflectionPosition);\n#else\nreturn computeCubicCoords(worldPos,worldNormal,vEyePosition.xyz,reflectionMatrix);\n#endif\n#endif\n#ifdef REFLECTIONMAP_PROJECTION\nreturn computeProjectionCoords(worldPos,view,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_SKYBOX\nreturn computeSkyBoxCoords(vPositionUVW,reflectionMatrix);\n#endif\n#ifdef REFLECTIONMAP_EXPLICIT\nreturn vec3(0,0,0);\n#endif\n}\n#endif";
+var name$H = 'bumpFragmentMainFunctions';
+var shader$H = "#if defined(BUMP) || defined(CLEARCOAT_BUMP) || defined(ANISOTROPIC) || defined(DETAIL)\n#if defined(TANGENT) && defined(NORMAL)\nvarying mat3 vTBN;\n#endif\n#ifdef OBJECTSPACE_NORMALMAP\nuniform mat4 normalMatrix;\n#endif\nvec3 perturbNormalBase(mat3 cotangentFrame,vec3 normal,float scale)\n{\n#ifdef NORMALXYSCALE\nnormal=normalize(normal*vec3(scale,scale,1.0));\n#endif\nreturn normalize(cotangentFrame*normal);\n}\nvec3 perturbNormal(mat3 cotangentFrame,vec3 textureSample,float scale)\n{\nreturn perturbNormalBase(cotangentFrame,textureSample*2.0-1.0,scale);\n}\n\nmat3 cotangent_frame(vec3 normal,vec3 p,vec2 uv,vec2 tangentSpaceParams)\n{\n\nvec3 dp1=dFdx(p);\nvec3 dp2=dFdy(p);\nvec2 duv1=dFdx(uv);\nvec2 duv2=dFdy(uv);\n\nvec3 dp2perp=cross(dp2,normal);\nvec3 dp1perp=cross(normal,dp1);\nvec3 tangent=dp2perp*duv1.x+dp1perp*duv2.x;\nvec3 bitangent=dp2perp*duv1.y+dp1perp*duv2.y;\n\ntangent*=tangentSpaceParams.x;\nbitangent*=tangentSpaceParams.y;\n\nfloat invmax=inversesqrt(max(dot(tangent,tangent),dot(bitangent,bitangent)));\nreturn mat3(tangent*invmax,bitangent*invmax,normal);\n}\n#endif\n";
 ShaderStore.IncludesShadersStore[name$H] = shader$H;
 
-var name$G = 'imageProcessingDeclaration';
-var shader$G = "#ifdef EXPOSURE\nuniform float exposureLinear;\n#endif\n#ifdef CONTRAST\nuniform float contrast;\n#endif\n#ifdef VIGNETTE\nuniform vec2 vInverseScreenSize;\nuniform vec4 vignetteSettings1;\nuniform vec4 vignetteSettings2;\n#endif\n#ifdef COLORCURVES\nuniform vec4 vCameraColorCurveNegative;\nuniform vec4 vCameraColorCurveNeutral;\nuniform vec4 vCameraColorCurvePositive;\n#endif\n#ifdef COLORGRADING\n#ifdef COLORGRADING3D\nuniform highp sampler3D txColorTransform;\n#else\nuniform sampler2D txColorTransform;\n#endif\nuniform vec4 colorTransformSettings;\n#endif";
+var name$G = 'bumpFragmentFunctions';
+var shader$G = "#if defined(BUMP)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,BUMP,_VARYINGNAME_,Bump,_SAMPLERNAME_,bump)\n#endif\n#if defined(DETAIL)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,DETAIL,_VARYINGNAME_,Detail,_SAMPLERNAME_,detail)\n#endif\n#if defined(BUMP) && defined(PARALLAX)\nconst float minSamples=4.;\nconst float maxSamples=15.;\nconst int iMaxSamples=15;\n\nvec2 parallaxOcclusion(vec3 vViewDirCoT,vec3 vNormalCoT,vec2 texCoord,float parallaxScale) {\nfloat parallaxLimit=length(vViewDirCoT.xy)/vViewDirCoT.z;\nparallaxLimit*=parallaxScale;\nvec2 vOffsetDir=normalize(vViewDirCoT.xy);\nvec2 vMaxOffset=vOffsetDir*parallaxLimit;\nfloat numSamples=maxSamples+(dot(vViewDirCoT,vNormalCoT)*(minSamples-maxSamples));\nfloat stepSize=1.0/numSamples;\n\nfloat currRayHeight=1.0;\nvec2 vCurrOffset=vec2(0,0);\nvec2 vLastOffset=vec2(0,0);\nfloat lastSampledHeight=1.0;\nfloat currSampledHeight=1.0;\nfor (int i=0; i<iMaxSamples; i++)\n{\ncurrSampledHeight=texture2D(bumpSampler,texCoord+vCurrOffset).w;\n\nif (currSampledHeight>currRayHeight)\n{\nfloat delta1=currSampledHeight-currRayHeight;\nfloat delta2=(currRayHeight+stepSize)-lastSampledHeight;\nfloat ratio=delta1/(delta1+delta2);\nvCurrOffset=(ratio)* vLastOffset+(1.0-ratio)*vCurrOffset;\n\nbreak;\n}\nelse\n{\ncurrRayHeight-=stepSize;\nvLastOffset=vCurrOffset;\nvCurrOffset+=stepSize*vMaxOffset;\nlastSampledHeight=currSampledHeight;\n}\n}\nreturn vCurrOffset;\n}\nvec2 parallaxOffset(vec3 viewDir,float heightScale)\n{\n\nfloat height=texture2D(bumpSampler,vBumpUV).w;\nvec2 texCoordOffset=heightScale*viewDir.xy*height;\nreturn -texCoordOffset;\n}\n#endif\n";
 ShaderStore.IncludesShadersStore[name$G] = shader$G;
 
-var name$F = 'imageProcessingFunctions';
-var shader$F = "#if defined(COLORGRADING) && !defined(COLORGRADING3D)\n\n#define inline\nvec3 sampleTexture3D(sampler2D colorTransform,vec3 color,vec2 sampler3dSetting)\n{\nfloat sliceSize=2.0*sampler3dSetting.x;\n#ifdef SAMPLER3DGREENDEPTH\nfloat sliceContinuous=(color.g-sampler3dSetting.x)*sampler3dSetting.y;\n#else\nfloat sliceContinuous=(color.b-sampler3dSetting.x)*sampler3dSetting.y;\n#endif\nfloat sliceInteger=floor(sliceContinuous);\n\n\nfloat sliceFraction=sliceContinuous-sliceInteger;\n#ifdef SAMPLER3DGREENDEPTH\nvec2 sliceUV=color.rb;\n#else\nvec2 sliceUV=color.rg;\n#endif\nsliceUV.x*=sliceSize;\nsliceUV.x+=sliceInteger*sliceSize;\nsliceUV=saturate(sliceUV);\nvec4 slice0Color=texture2D(colorTransform,sliceUV);\nsliceUV.x+=sliceSize;\nsliceUV=saturate(sliceUV);\nvec4 slice1Color=texture2D(colorTransform,sliceUV);\nvec3 result=mix(slice0Color.rgb,slice1Color.rgb,sliceFraction);\n#ifdef SAMPLER3DBGRMAP\ncolor.rgb=result.rgb;\n#else\ncolor.rgb=result.bgr;\n#endif\nreturn color;\n}\n#endif\n#ifdef TONEMAPPING_ACES\n\n\n\n\n\nconst mat3 ACESInputMat=mat3(\nvec3(0.59719,0.07600,0.02840),\nvec3(0.35458,0.90834,0.13383),\nvec3(0.04823,0.01566,0.83777)\n);\n\nconst mat3 ACESOutputMat=mat3(\nvec3( 1.60475,-0.10208,-0.00327),\nvec3(-0.53108,1.10813,-0.07276),\nvec3(-0.07367,-0.00605,1.07602)\n);\nvec3 RRTAndODTFit(vec3 v)\n{\nvec3 a=v*(v+0.0245786)-0.000090537;\nvec3 b=v*(0.983729*v+0.4329510)+0.238081;\nreturn a/b;\n}\nvec3 ACESFitted(vec3 color)\n{\ncolor=ACESInputMat*color;\n\ncolor=RRTAndODTFit(color);\ncolor=ACESOutputMat*color;\n\ncolor=saturate(color);\nreturn color;\n}\n#endif\nvec4 applyImageProcessing(vec4 result) {\n#ifdef EXPOSURE\nresult.rgb*=exposureLinear;\n#endif\n#ifdef VIGNETTE\n\nvec2 viewportXY=gl_FragCoord.xy*vInverseScreenSize;\nviewportXY=viewportXY*2.0-1.0;\nvec3 vignetteXY1=vec3(viewportXY*vignetteSettings1.xy+vignetteSettings1.zw,1.0);\nfloat vignetteTerm=dot(vignetteXY1,vignetteXY1);\nfloat vignette=pow(vignetteTerm,vignetteSettings2.w);\n\nvec3 vignetteColor=vignetteSettings2.rgb;\n#ifdef VIGNETTEBLENDMODEMULTIPLY\nvec3 vignetteColorMultiplier=mix(vignetteColor,vec3(1,1,1),vignette);\nresult.rgb*=vignetteColorMultiplier;\n#endif\n#ifdef VIGNETTEBLENDMODEOPAQUE\nresult.rgb=mix(vignetteColor,result.rgb,vignette);\n#endif\n#endif\n#ifdef TONEMAPPING\n#ifdef TONEMAPPING_ACES\nresult.rgb=ACESFitted(result.rgb);\n#else\nconst float tonemappingCalibration=1.590579;\nresult.rgb=1.0-exp2(-tonemappingCalibration*result.rgb);\n#endif\n#endif\n\nresult.rgb=toGammaSpace(result.rgb);\nresult.rgb=saturate(result.rgb);\n#ifdef CONTRAST\n\nvec3 resultHighContrast=result.rgb*result.rgb*(3.0-2.0*result.rgb);\nif (contrast<1.0) {\n\nresult.rgb=mix(vec3(0.5,0.5,0.5),result.rgb,contrast);\n} else {\n\nresult.rgb=mix(result.rgb,resultHighContrast,contrast-1.0);\n}\n#endif\n\n#ifdef COLORGRADING\nvec3 colorTransformInput=result.rgb*colorTransformSettings.xxx+colorTransformSettings.yyy;\n#ifdef COLORGRADING3D\nvec3 colorTransformOutput=texture(txColorTransform,colorTransformInput).rgb;\n#else\nvec3 colorTransformOutput=sampleTexture3D(txColorTransform,colorTransformInput,colorTransformSettings.yz).rgb;\n#endif\nresult.rgb=mix(result.rgb,colorTransformOutput,colorTransformSettings.www);\n#endif\n#ifdef COLORCURVES\n\nfloat luma=getLuminance(result.rgb);\nvec2 curveMix=clamp(vec2(luma*3.0-1.5,luma*-3.0+1.5),vec2(0.0),vec2(1.0));\nvec4 colorCurve=vCameraColorCurveNeutral+curveMix.x*vCameraColorCurvePositive-curveMix.y*vCameraColorCurveNegative;\nresult.rgb*=colorCurve.rgb;\nresult.rgb=mix(vec3(luma),result.rgb,colorCurve.a);\n#endif\nreturn result;\n}";
+var name$F = 'clipPlaneFragmentDeclaration';
+var shader$F = "#ifdef CLIPPLANE\nvarying float fClipDistance;\n#endif\n#ifdef CLIPPLANE2\nvarying float fClipDistance2;\n#endif\n#ifdef CLIPPLANE3\nvarying float fClipDistance3;\n#endif\n#ifdef CLIPPLANE4\nvarying float fClipDistance4;\n#endif\n#ifdef CLIPPLANE5\nvarying float fClipDistance5;\n#endif\n#ifdef CLIPPLANE6\nvarying float fClipDistance6;\n#endif";
 ShaderStore.IncludesShadersStore[name$F] = shader$F;
 
-var name$E = 'bumpFragmentMainFunctions';
-var shader$E = "#if defined(BUMP) || defined(CLEARCOAT_BUMP) || defined(ANISOTROPIC) || defined(DETAIL)\n#if defined(TANGENT) && defined(NORMAL)\nvarying mat3 vTBN;\n#endif\n#ifdef OBJECTSPACE_NORMALMAP\nuniform mat4 normalMatrix;\n#endif\nvec3 perturbNormalBase(mat3 cotangentFrame,vec3 normal,float scale)\n{\n#ifdef NORMALXYSCALE\nnormal=normalize(normal*vec3(scale,scale,1.0));\n#endif\nreturn normalize(cotangentFrame*normal);\n}\nvec3 perturbNormal(mat3 cotangentFrame,vec3 textureSample,float scale)\n{\nreturn perturbNormalBase(cotangentFrame,textureSample*2.0-1.0,scale);\n}\n\nmat3 cotangent_frame(vec3 normal,vec3 p,vec2 uv,vec2 tangentSpaceParams)\n{\n\nvec3 dp1=dFdx(p);\nvec3 dp2=dFdy(p);\nvec2 duv1=dFdx(uv);\nvec2 duv2=dFdy(uv);\n\nvec3 dp2perp=cross(dp2,normal);\nvec3 dp1perp=cross(normal,dp1);\nvec3 tangent=dp2perp*duv1.x+dp1perp*duv2.x;\nvec3 bitangent=dp2perp*duv1.y+dp1perp*duv2.y;\n\ntangent*=tangentSpaceParams.x;\nbitangent*=tangentSpaceParams.y;\n\nfloat invmax=inversesqrt(max(dot(tangent,tangent),dot(bitangent,bitangent)));\nreturn mat3(tangent*invmax,bitangent*invmax,normal);\n}\n#endif\n";
+var name$E = 'logDepthDeclaration';
+var shader$E = "#ifdef LOGARITHMICDEPTH\nuniform float logarithmicDepthConstant;\nvarying float vFragmentDepth;\n#endif";
 ShaderStore.IncludesShadersStore[name$E] = shader$E;
 
-var name$D = 'bumpFragmentFunctions';
-var shader$D = "#if defined(BUMP)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,BUMP,_VARYINGNAME_,Bump,_SAMPLERNAME_,bump)\n#endif\n#if defined(DETAIL)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,DETAIL,_VARYINGNAME_,Detail,_SAMPLERNAME_,detail)\n#endif\n#if defined(BUMP) && defined(PARALLAX)\nconst float minSamples=4.;\nconst float maxSamples=15.;\nconst int iMaxSamples=15;\n\nvec2 parallaxOcclusion(vec3 vViewDirCoT,vec3 vNormalCoT,vec2 texCoord,float parallaxScale) {\nfloat parallaxLimit=length(vViewDirCoT.xy)/vViewDirCoT.z;\nparallaxLimit*=parallaxScale;\nvec2 vOffsetDir=normalize(vViewDirCoT.xy);\nvec2 vMaxOffset=vOffsetDir*parallaxLimit;\nfloat numSamples=maxSamples+(dot(vViewDirCoT,vNormalCoT)*(minSamples-maxSamples));\nfloat stepSize=1.0/numSamples;\n\nfloat currRayHeight=1.0;\nvec2 vCurrOffset=vec2(0,0);\nvec2 vLastOffset=vec2(0,0);\nfloat lastSampledHeight=1.0;\nfloat currSampledHeight=1.0;\nfor (int i=0; i<iMaxSamples; i++)\n{\ncurrSampledHeight=texture2D(bumpSampler,texCoord+vCurrOffset).w;\n\nif (currSampledHeight>currRayHeight)\n{\nfloat delta1=currSampledHeight-currRayHeight;\nfloat delta2=(currRayHeight+stepSize)-lastSampledHeight;\nfloat ratio=delta1/(delta1+delta2);\nvCurrOffset=(ratio)* vLastOffset+(1.0-ratio)*vCurrOffset;\n\nbreak;\n}\nelse\n{\ncurrRayHeight-=stepSize;\nvLastOffset=vCurrOffset;\nvCurrOffset+=stepSize*vMaxOffset;\nlastSampledHeight=currSampledHeight;\n}\n}\nreturn vCurrOffset;\n}\nvec2 parallaxOffset(vec3 viewDir,float heightScale)\n{\n\nfloat height=texture2D(bumpSampler,vBumpUV).w;\nvec2 texCoordOffset=heightScale*viewDir.xy*height;\nreturn -texCoordOffset;\n}\n#endif\n";
+var name$D = 'fogFragmentDeclaration';
+var shader$D = "#ifdef FOG\n#define FOGMODE_NONE 0.\n#define FOGMODE_EXP 1.\n#define FOGMODE_EXP2 2.\n#define FOGMODE_LINEAR 3.\n#define E 2.71828\nuniform vec4 vFogInfos;\nuniform vec3 vFogColor;\nvarying vec3 vFogDistance;\nfloat CalcFogFactor()\n{\nfloat fogCoeff=1.0;\nfloat fogStart=vFogInfos.y;\nfloat fogEnd=vFogInfos.z;\nfloat fogDensity=vFogInfos.w;\nfloat fogDistance=length(vFogDistance);\nif (FOGMODE_LINEAR == vFogInfos.x)\n{\nfogCoeff=(fogEnd-fogDistance)/(fogEnd-fogStart);\n}\nelse if (FOGMODE_EXP == vFogInfos.x)\n{\nfogCoeff=1.0/pow(E,fogDistance*fogDensity);\n}\nelse if (FOGMODE_EXP2 == vFogInfos.x)\n{\nfogCoeff=1.0/pow(E,fogDistance*fogDistance*fogDensity*fogDensity);\n}\nreturn clamp(fogCoeff,0.0,1.0);\n}\n#endif";
 ShaderStore.IncludesShadersStore[name$D] = shader$D;
 
-var name$C = 'clipPlaneFragmentDeclaration';
-var shader$C = "#ifdef CLIPPLANE\nvarying float fClipDistance;\n#endif\n#ifdef CLIPPLANE2\nvarying float fClipDistance2;\n#endif\n#ifdef CLIPPLANE3\nvarying float fClipDistance3;\n#endif\n#ifdef CLIPPLANE4\nvarying float fClipDistance4;\n#endif\n#ifdef CLIPPLANE5\nvarying float fClipDistance5;\n#endif\n#ifdef CLIPPLANE6\nvarying float fClipDistance6;\n#endif";
+var name$C = 'oitFragment';
+var shader$C = "#ifdef ORDER_INDEPENDENT_TRANSPARENCY\n\n\n\nfloat fragDepth=gl_FragCoord.z;\n#ifdef ORDER_INDEPENDENT_TRANSPARENCY_16BITS\nuint halfFloat=packHalf2x16(vec2(fragDepth));\nvec2 full=unpackHalf2x16(halfFloat);\nfragDepth=full.x;\n#endif\nivec2 fragCoord=ivec2(gl_FragCoord.xy);\nvec2 lastDepth=texelFetch(oitDepthSampler,fragCoord,0).rg;\nvec4 lastFrontColor=texelFetch(oitFrontColorSampler,fragCoord,0);\n\n\ndepth.rg=vec2(-MAX_DEPTH);\n\n\nfrontColor=lastFrontColor;\n\nbackColor=vec4(0.0);\n#ifdef USE_REVERSE_DEPTHBUFFER\nfloat furthestDepth=-lastDepth.x;\nfloat nearestDepth=lastDepth.y;\n#else\nfloat nearestDepth=-lastDepth.x;\nfloat furthestDepth=lastDepth.y;\n#endif\n\n\nfloat alphaMultiplier=1.0-lastFrontColor.a;\n#ifdef USE_REVERSE_DEPTHBUFFER\nif (fragDepth>nearestDepth || fragDepth<furthestDepth) {\n#else\nif (fragDepth<nearestDepth || fragDepth>furthestDepth) {\n#endif\n\nreturn;\n}\n#ifdef USE_REVERSE_DEPTHBUFFER\nif (fragDepth<nearestDepth && fragDepth>furthestDepth) {\n#else\nif (fragDepth>nearestDepth && fragDepth<furthestDepth) {\n#endif\n\n\n\ndepth.rg=vec2(-fragDepth,fragDepth);\nreturn;\n}\n\n\n\n#endif";
 ShaderStore.IncludesShadersStore[name$C] = shader$C;
 
-var name$B = 'logDepthDeclaration';
-var shader$B = "#ifdef LOGARITHMICDEPTH\nuniform float logarithmicDepthConstant;\nvarying float vFragmentDepth;\n#endif";
+var name$B = 'clipPlaneFragment';
+var shader$B = "#if defined(CLIPPLANE) || defined(CLIPPLANE2) || defined(CLIPPLANE3) || defined(CLIPPLANE4) || defined(CLIPPLANE5) || defined(CLIPPLANE6)\n\n\nif (false) {}\n#endif\n#ifdef CLIPPLANE\nelse if (fClipDistance>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE2\nelse if (fClipDistance2>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE3\nelse if (fClipDistance3>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE4\nelse if (fClipDistance4>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE5\nelse if (fClipDistance5>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE6\nelse if (fClipDistance6>0.0)\n{\ndiscard;\n}\n#endif";
 ShaderStore.IncludesShadersStore[name$B] = shader$B;
 
-var name$A = 'fogFragmentDeclaration';
-var shader$A = "#ifdef FOG\n#define FOGMODE_NONE 0.\n#define FOGMODE_EXP 1.\n#define FOGMODE_EXP2 2.\n#define FOGMODE_LINEAR 3.\n#define E 2.71828\nuniform vec4 vFogInfos;\nuniform vec3 vFogColor;\nvarying vec3 vFogDistance;\nfloat CalcFogFactor()\n{\nfloat fogCoeff=1.0;\nfloat fogStart=vFogInfos.y;\nfloat fogEnd=vFogInfos.z;\nfloat fogDensity=vFogInfos.w;\nfloat fogDistance=length(vFogDistance);\nif (FOGMODE_LINEAR == vFogInfos.x)\n{\nfogCoeff=(fogEnd-fogDistance)/(fogEnd-fogStart);\n}\nelse if (FOGMODE_EXP == vFogInfos.x)\n{\nfogCoeff=1.0/pow(E,fogDistance*fogDensity);\n}\nelse if (FOGMODE_EXP2 == vFogInfos.x)\n{\nfogCoeff=1.0/pow(E,fogDistance*fogDistance*fogDensity*fogDensity);\n}\nreturn clamp(fogCoeff,0.0,1.0);\n}\n#endif";
+var name$A = 'bumpFragment';
+var shader$A = "vec2 uvOffset=vec2(0.0,0.0);\n#if defined(BUMP) || defined(PARALLAX) || defined(DETAIL)\n#ifdef NORMALXYSCALE\nfloat normalScale=1.0;\n#elif defined(BUMP)\nfloat normalScale=vBumpInfos.y;\n#else\nfloat normalScale=1.0;\n#endif\n#if defined(TANGENT) && defined(NORMAL)\nmat3 TBN=vTBN;\n#elif defined(BUMP)\n\nvec2 TBNUV=gl_FrontFacing ? vBumpUV : -vBumpUV;\nmat3 TBN=cotangent_frame(normalW*normalScale,vPositionW,TBNUV,vTangentSpaceParams);\n#else\n\nvec2 TBNUV=gl_FrontFacing ? vDetailUV : -vDetailUV;\nmat3 TBN=cotangent_frame(normalW*normalScale,vPositionW,TBNUV,vec2(1.,1.));\n#endif\n#elif defined(ANISOTROPIC)\n#if defined(TANGENT) && defined(NORMAL)\nmat3 TBN=vTBN;\n#else\n\nvec2 TBNUV=gl_FrontFacing ? vMainUV1 : -vMainUV1;\nmat3 TBN=cotangent_frame(normalW,vPositionW,TBNUV,vec2(1.,1.));\n#endif\n#endif\n#ifdef PARALLAX\nmat3 invTBN=transposeMat3(TBN);\n#ifdef PARALLAXOCCLUSION\nuvOffset=parallaxOcclusion(invTBN*-viewDirectionW,invTBN*normalW,vBumpUV,vBumpInfos.z);\n#else\nuvOffset=parallaxOffset(invTBN*viewDirectionW,vBumpInfos.z);\n#endif\n#endif\n#ifdef DETAIL\nvec4 detailColor=texture2D(detailSampler,vDetailUV+uvOffset);\nvec2 detailNormalRG=detailColor.wy*2.0-1.0;\nfloat detailNormalB=sqrt(1.-saturate(dot(detailNormalRG,detailNormalRG)));\nvec3 detailNormal=vec3(detailNormalRG,detailNormalB);\n#endif\n#ifdef BUMP\n#ifdef OBJECTSPACE_NORMALMAP\nnormalW=normalize(texture2D(bumpSampler,vBumpUV).xyz*2.0-1.0);\nnormalW=normalize(mat3(normalMatrix)*normalW);\n#elif !defined(DETAIL)\nnormalW=perturbNormal(TBN,texture2D(bumpSampler,vBumpUV+uvOffset).xyz,vBumpInfos.y);\n#else\nvec3 bumpNormal=texture2D(bumpSampler,vBumpUV+uvOffset).xyz*2.0-1.0;\n\n#if DETAIL_NORMALBLENDMETHOD == 0\ndetailNormal.xy*=vDetailInfos.z;\nvec3 blendedNormal=normalize(vec3(bumpNormal.xy+detailNormal.xy,bumpNormal.z*detailNormal.z));\n#elif DETAIL_NORMALBLENDMETHOD == 1\ndetailNormal.xy*=vDetailInfos.z;\nbumpNormal+=vec3(0.0,0.0,1.0);\ndetailNormal*=vec3(-1.0,-1.0,1.0);\nvec3 blendedNormal=bumpNormal*dot(bumpNormal,detailNormal)/bumpNormal.z-detailNormal;\n#endif\nnormalW=perturbNormalBase(TBN,blendedNormal,vBumpInfos.y);\n#endif\n#elif defined(DETAIL)\ndetailNormal.xy*=vDetailInfos.z;\nnormalW=perturbNormalBase(TBN,detailNormal,vDetailInfos.z);\n#endif\n";
 ShaderStore.IncludesShadersStore[name$A] = shader$A;
 
-var name$z = 'clipPlaneFragment';
-var shader$z = "#if defined(CLIPPLANE) || defined(CLIPPLANE2) || defined(CLIPPLANE3) || defined(CLIPPLANE4) || defined(CLIPPLANE5) || defined(CLIPPLANE6)\n\n\nif (false) {}\n#endif\n#ifdef CLIPPLANE\nelse if (fClipDistance>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE2\nelse if (fClipDistance2>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE3\nelse if (fClipDistance3>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE4\nelse if (fClipDistance4>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE5\nelse if (fClipDistance5>0.0)\n{\ndiscard;\n}\n#endif\n#ifdef CLIPPLANE6\nelse if (fClipDistance6>0.0)\n{\ndiscard;\n}\n#endif";
+var name$z = 'depthPrePass';
+var shader$z = "#ifdef DEPTHPREPASS\ngl_FragColor=vec4(0.,0.,0.,1.0);\nreturn;\n#endif";
 ShaderStore.IncludesShadersStore[name$z] = shader$z;
 
-var name$y = 'bumpFragment';
-var shader$y = "vec2 uvOffset=vec2(0.0,0.0);\n#if defined(BUMP) || defined(PARALLAX) || defined(DETAIL)\n#ifdef NORMALXYSCALE\nfloat normalScale=1.0;\n#elif defined(BUMP)\nfloat normalScale=vBumpInfos.y;\n#else\nfloat normalScale=1.0;\n#endif\n#if defined(TANGENT) && defined(NORMAL)\nmat3 TBN=vTBN;\n#elif defined(BUMP)\n\nvec2 TBNUV=gl_FrontFacing ? vBumpUV : -vBumpUV;\nmat3 TBN=cotangent_frame(normalW*normalScale,vPositionW,TBNUV,vTangentSpaceParams);\n#else\n\nvec2 TBNUV=gl_FrontFacing ? vDetailUV : -vDetailUV;\nmat3 TBN=cotangent_frame(normalW*normalScale,vPositionW,TBNUV,vec2(1.,1.));\n#endif\n#elif defined(ANISOTROPIC)\n#if defined(TANGENT) && defined(NORMAL)\nmat3 TBN=vTBN;\n#else\n\nvec2 TBNUV=gl_FrontFacing ? vMainUV1 : -vMainUV1;\nmat3 TBN=cotangent_frame(normalW,vPositionW,TBNUV,vec2(1.,1.));\n#endif\n#endif\n#ifdef PARALLAX\nmat3 invTBN=transposeMat3(TBN);\n#ifdef PARALLAXOCCLUSION\nuvOffset=parallaxOcclusion(invTBN*-viewDirectionW,invTBN*normalW,vBumpUV,vBumpInfos.z);\n#else\nuvOffset=parallaxOffset(invTBN*viewDirectionW,vBumpInfos.z);\n#endif\n#endif\n#ifdef DETAIL\nvec4 detailColor=texture2D(detailSampler,vDetailUV+uvOffset);\nvec2 detailNormalRG=detailColor.wy*2.0-1.0;\nfloat detailNormalB=sqrt(1.-saturate(dot(detailNormalRG,detailNormalRG)));\nvec3 detailNormal=vec3(detailNormalRG,detailNormalB);\n#endif\n#ifdef BUMP\n#ifdef OBJECTSPACE_NORMALMAP\nnormalW=normalize(texture2D(bumpSampler,vBumpUV).xyz*2.0-1.0);\nnormalW=normalize(mat3(normalMatrix)*normalW);\n#elif !defined(DETAIL)\nnormalW=perturbNormal(TBN,texture2D(bumpSampler,vBumpUV+uvOffset).xyz,vBumpInfos.y);\n#else\nvec3 bumpNormal=texture2D(bumpSampler,vBumpUV+uvOffset).xyz*2.0-1.0;\n\n#if DETAIL_NORMALBLENDMETHOD == 0\ndetailNormal.xy*=vDetailInfos.z;\nvec3 blendedNormal=normalize(vec3(bumpNormal.xy+detailNormal.xy,bumpNormal.z*detailNormal.z));\n#elif DETAIL_NORMALBLENDMETHOD == 1\ndetailNormal.xy*=vDetailInfos.z;\nbumpNormal+=vec3(0.0,0.0,1.0);\ndetailNormal*=vec3(-1.0,-1.0,1.0);\nvec3 blendedNormal=bumpNormal*dot(bumpNormal,detailNormal)/bumpNormal.z-detailNormal;\n#endif\nnormalW=perturbNormalBase(TBN,blendedNormal,vBumpInfos.y);\n#endif\n#elif defined(DETAIL)\ndetailNormal.xy*=vDetailInfos.z;\nnormalW=perturbNormalBase(TBN,detailNormal,vDetailInfos.z);\n#endif\n";
+var name$y = 'lightFragment';
+var shader$y = "#ifdef LIGHT{X}\n#if defined(SHADOWONLY) || defined(LIGHTMAP) && defined(LIGHTMAPEXCLUDED{X}) && defined(LIGHTMAPNOSPECULAR{X})\n\n#else\n#ifdef PBR\n\n#ifdef SPOTLIGHT{X}\npreInfo=computePointAndSpotPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#elif defined(POINTLIGHT{X})\npreInfo=computePointAndSpotPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#elif defined(HEMILIGHT{X})\npreInfo=computeHemisphericPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#elif defined(DIRLIGHT{X})\npreInfo=computeDirectionalPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#endif\npreInfo.NdotV=NdotV;\n\n#ifdef SPOTLIGHT{X}\n#ifdef LIGHT_FALLOFF_GLTF{X}\npreInfo.attenuation=computeDistanceLightFalloff_GLTF(preInfo.lightDistanceSquared,light{X}.vLightFalloff.y);\npreInfo.attenuation*=computeDirectionalLightFalloff_GLTF(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightFalloff.z,light{X}.vLightFalloff.w);\n#elif defined(LIGHT_FALLOFF_PHYSICAL{X})\npreInfo.attenuation=computeDistanceLightFalloff_Physical(preInfo.lightDistanceSquared);\npreInfo.attenuation*=computeDirectionalLightFalloff_Physical(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightDirection.w);\n#elif defined(LIGHT_FALLOFF_STANDARD{X})\npreInfo.attenuation=computeDistanceLightFalloff_Standard(preInfo.lightOffset,light{X}.vLightFalloff.x);\npreInfo.attenuation*=computeDirectionalLightFalloff_Standard(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightDirection.w,light{X}.vLightData.w);\n#else\npreInfo.attenuation=computeDistanceLightFalloff(preInfo.lightOffset,preInfo.lightDistanceSquared,light{X}.vLightFalloff.x,light{X}.vLightFalloff.y);\npreInfo.attenuation*=computeDirectionalLightFalloff(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightDirection.w,light{X}.vLightData.w,light{X}.vLightFalloff.z,light{X}.vLightFalloff.w);\n#endif\n#elif defined(POINTLIGHT{X})\n#ifdef LIGHT_FALLOFF_GLTF{X}\npreInfo.attenuation=computeDistanceLightFalloff_GLTF(preInfo.lightDistanceSquared,light{X}.vLightFalloff.y);\n#elif defined(LIGHT_FALLOFF_PHYSICAL{X})\npreInfo.attenuation=computeDistanceLightFalloff_Physical(preInfo.lightDistanceSquared);\n#elif defined(LIGHT_FALLOFF_STANDARD{X})\npreInfo.attenuation=computeDistanceLightFalloff_Standard(preInfo.lightOffset,light{X}.vLightFalloff.x);\n#else\npreInfo.attenuation=computeDistanceLightFalloff(preInfo.lightOffset,preInfo.lightDistanceSquared,light{X}.vLightFalloff.x,light{X}.vLightFalloff.y);\n#endif\n#else\npreInfo.attenuation=1.0;\n#endif\n\n\n#ifdef HEMILIGHT{X}\npreInfo.roughness=roughness;\n#else\npreInfo.roughness=adjustRoughnessFromLightProperties(roughness,light{X}.vLightSpecular.a,preInfo.lightDistance);\n#endif\n\n#ifdef HEMILIGHT{X}\ninfo.diffuse=computeHemisphericDiffuseLighting(preInfo,light{X}.vLightDiffuse.rgb,light{X}.vLightGround);\n#elif defined(SS_TRANSLUCENCY)\ninfo.diffuse=computeDiffuseAndTransmittedLighting(preInfo,light{X}.vLightDiffuse.rgb,subSurfaceOut.transmittance);\n#else\ninfo.diffuse=computeDiffuseLighting(preInfo,light{X}.vLightDiffuse.rgb);\n#endif\n\n#ifdef SPECULARTERM\n#ifdef ANISOTROPIC\ninfo.specular=computeAnisotropicSpecularLighting(preInfo,viewDirectionW,normalW,anisotropicOut.anisotropicTangent,anisotropicOut.anisotropicBitangent,anisotropicOut.anisotropy,clearcoatOut.specularEnvironmentR0,specularEnvironmentR90,AARoughnessFactors.x,light{X}.vLightDiffuse.rgb);\n#else\ninfo.specular=computeSpecularLighting(preInfo,normalW,clearcoatOut.specularEnvironmentR0,specularEnvironmentR90,AARoughnessFactors.x,light{X}.vLightDiffuse.rgb);\n#endif\n#endif\n\n#ifdef SHEEN\n#ifdef SHEEN_LINKWITHALBEDO\n\npreInfo.roughness=sheenOut.sheenIntensity;\n#else\n#ifdef HEMILIGHT{X}\npreInfo.roughness=sheenOut.sheenRoughness;\n#else\npreInfo.roughness=adjustRoughnessFromLightProperties(sheenOut.sheenRoughness,light{X}.vLightSpecular.a,preInfo.lightDistance);\n#endif\n#endif\ninfo.sheen=computeSheenLighting(preInfo,normalW,sheenOut.sheenColor,specularEnvironmentR90,AARoughnessFactors.x,light{X}.vLightDiffuse.rgb);\n#endif\n\n#ifdef CLEARCOAT\n\n#ifdef HEMILIGHT{X}\npreInfo.roughness=clearcoatOut.clearCoatRoughness;\n#else\npreInfo.roughness=adjustRoughnessFromLightProperties(clearcoatOut.clearCoatRoughness,light{X}.vLightSpecular.a,preInfo.lightDistance);\n#endif\ninfo.clearCoat=computeClearCoatLighting(preInfo,clearcoatOut.clearCoatNormalW,clearcoatOut.clearCoatAARoughnessFactors.x,clearcoatOut.clearCoatIntensity,light{X}.vLightDiffuse.rgb);\n#ifdef CLEARCOAT_TINT\n\nabsorption=computeClearCoatLightingAbsorption(clearcoatOut.clearCoatNdotVRefract,preInfo.L,clearcoatOut.clearCoatNormalW,clearcoatOut.clearCoatColor,clearcoatOut.clearCoatThickness,clearcoatOut.clearCoatIntensity);\ninfo.diffuse*=absorption;\n#ifdef SPECULARTERM\ninfo.specular*=absorption;\n#endif\n#endif\n\ninfo.diffuse*=info.clearCoat.w;\n#ifdef SPECULARTERM\ninfo.specular*=info.clearCoat.w;\n#endif\n#ifdef SHEEN\ninfo.sheen*=info.clearCoat.w;\n#endif\n#endif\n#else\n#ifdef SPOTLIGHT{X}\ninfo=computeSpotLighting(viewDirectionW,normalW,light{X}.vLightData,light{X}.vLightDirection,light{X}.vLightDiffuse.rgb,light{X}.vLightSpecular.rgb,light{X}.vLightDiffuse.a,glossiness);\n#elif defined(HEMILIGHT{X})\ninfo=computeHemisphericLighting(viewDirectionW,normalW,light{X}.vLightData,light{X}.vLightDiffuse.rgb,light{X}.vLightSpecular.rgb,light{X}.vLightGround,glossiness);\n#elif defined(POINTLIGHT{X}) || defined(DIRLIGHT{X})\ninfo=computeLighting(viewDirectionW,normalW,light{X}.vLightData,light{X}.vLightDiffuse.rgb,light{X}.vLightSpecular.rgb,light{X}.vLightDiffuse.a,glossiness);\n#endif\n#endif\n#ifdef PROJECTEDLIGHTTEXTURE{X}\ninfo.diffuse*=computeProjectionTextureDiffuseLighting(projectionLightSampler{X},textureProjectionMatrix{X});\n#endif\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nfor (int i=0; i<SHADOWCSMNUM_CASCADES{X}; i++)\n{\n#ifdef SHADOWCSM_RIGHTHANDED{X}\ndiff{X}=viewFrustumZ{X}[i]+vPositionFromCamera{X}.z;\n#else\ndiff{X}=viewFrustumZ{X}[i]-vPositionFromCamera{X}.z;\n#endif\nif (diff{X}>=0.) {\nindex{X}=i;\nbreak;\n}\n}\n#ifdef SHADOWCSMUSESHADOWMAXZ{X}\nif (index{X}>=0)\n#endif\n{\n#if defined(SHADOWPCF{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithCSMPCF1(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithCSMPCF3(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nshadow=computeShadowWithCSMPCF5(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCSS{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithCSMPCSS16(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithCSMPCSS32(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#else\nshadow=computeShadowWithCSMPCSS64(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#endif\n#else\nshadow=computeShadowCSM(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#ifdef SHADOWCSMDEBUG{X}\nshadowDebug{X}=vec3(shadow)*vCascadeColorsMultiplier{X}[index{X}];\n#endif\n#ifndef SHADOWCSMNOBLEND{X}\nfloat frustumLength=frustumLengths{X}[index{X}];\nfloat diffRatio=clamp(diff{X}/frustumLength,0.,1.)*cascadeBlendFactor{X};\nif (index{X}<(SHADOWCSMNUM_CASCADES{X}-1) && diffRatio<1.)\n{\nindex{X}+=1;\nfloat nextShadow=0.;\n#if defined(SHADOWPCF{X})\n#if defined(SHADOWLOWQUALITY{X})\nnextShadow=computeShadowWithCSMPCF1(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nnextShadow=computeShadowWithCSMPCF3(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nnextShadow=computeShadowWithCSMPCF5(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCSS{X})\n#if defined(SHADOWLOWQUALITY{X})\nnextShadow=computeShadowWithCSMPCSS16(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#elif defined(SHADOWMEDIUMQUALITY{X})\nnextShadow=computeShadowWithCSMPCSS32(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#else\nnextShadow=computeShadowWithCSMPCSS64(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#endif\n#else\nnextShadow=computeShadowCSM(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\nshadow=mix(nextShadow,shadow,diffRatio);\n#ifdef SHADOWCSMDEBUG{X}\nshadowDebug{X}=mix(vec3(nextShadow)*vCascadeColorsMultiplier{X}[index{X}],shadowDebug{X},diffRatio);\n#endif\n}\n#endif\n}\n#elif defined(SHADOWCLOSEESM{X})\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowWithCloseESMCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.depthValues);\n#else\nshadow=computeShadowWithCloseESM(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWESM{X})\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowWithESMCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.depthValues);\n#else\nshadow=computeShadowWithESM(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPOISSON{X})\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowWithPoissonSamplingCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.x,light{X}.depthValues);\n#else\nshadow=computeShadowWithPoissonSampling(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCF{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithPCF1(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithPCF3(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nshadow=computeShadowWithPCF5(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCSS{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithPCSS16(vPositionFromLight{X},vDepthMetric{X},depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithPCSS32(vPositionFromLight{X},vDepthMetric{X},depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nshadow=computeShadowWithPCSS64(vPositionFromLight{X},vDepthMetric{X},depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#else\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.x,light{X}.depthValues);\n#else\nshadow=computeShadow(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#endif\n#ifdef SHADOWONLY\n#ifndef SHADOWINUSE\n#define SHADOWINUSE\n#endif\nglobalShadow+=shadow;\nshadowLightCount+=1.0;\n#endif\n#else\nshadow=1.;\n#endif\n#ifndef SHADOWONLY\n#ifdef CUSTOMUSERLIGHTING\ndiffuseBase+=computeCustomDiffuseLighting(info,diffuseBase,shadow);\n#ifdef SPECULARTERM\nspecularBase+=computeCustomSpecularLighting(info,specularBase,shadow);\n#endif\n#elif defined(LIGHTMAP) && defined(LIGHTMAPEXCLUDED{X})\ndiffuseBase+=lightmapColor.rgb*shadow;\n#ifdef SPECULARTERM\n#ifndef LIGHTMAPNOSPECULAR{X}\nspecularBase+=info.specular*shadow*lightmapColor.rgb;\n#endif\n#endif\n#ifdef CLEARCOAT\n#ifndef LIGHTMAPNOSPECULAR{X}\nclearCoatBase+=info.clearCoat.rgb*shadow*lightmapColor.rgb;\n#endif\n#endif\n#ifdef SHEEN\n#ifndef LIGHTMAPNOSPECULAR{X}\nsheenBase+=info.sheen.rgb*shadow;\n#endif\n#endif\n#else\n#ifdef SHADOWCSMDEBUG{X}\ndiffuseBase+=info.diffuse*shadowDebug{X};\n#else\ndiffuseBase+=info.diffuse*shadow;\n#endif\n#ifdef SPECULARTERM\nspecularBase+=info.specular*shadow;\n#endif\n#ifdef CLEARCOAT\nclearCoatBase+=info.clearCoat.rgb*shadow;\n#endif\n#ifdef SHEEN\nsheenBase+=info.sheen.rgb*shadow;\n#endif\n#endif\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$y] = shader$y;
 
-var name$x = 'depthPrePass';
-var shader$x = "#ifdef DEPTHPREPASS\ngl_FragColor=vec4(0.,0.,0.,1.0);\nreturn;\n#endif";
+var name$x = 'logDepthFragment';
+var shader$x = "#ifdef LOGARITHMICDEPTH\ngl_FragDepthEXT=log2(vFragmentDepth)*logarithmicDepthConstant*0.5;\n#endif";
 ShaderStore.IncludesShadersStore[name$x] = shader$x;
 
-var name$w = 'lightFragment';
-var shader$w = "#ifdef LIGHT{X}\n#if defined(SHADOWONLY) || defined(LIGHTMAP) && defined(LIGHTMAPEXCLUDED{X}) && defined(LIGHTMAPNOSPECULAR{X})\n\n#else\n#ifdef PBR\n\n#ifdef SPOTLIGHT{X}\npreInfo=computePointAndSpotPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#elif defined(POINTLIGHT{X})\npreInfo=computePointAndSpotPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#elif defined(HEMILIGHT{X})\npreInfo=computeHemisphericPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#elif defined(DIRLIGHT{X})\npreInfo=computeDirectionalPreLightingInfo(light{X}.vLightData,viewDirectionW,normalW);\n#endif\npreInfo.NdotV=NdotV;\n\n#ifdef SPOTLIGHT{X}\n#ifdef LIGHT_FALLOFF_GLTF{X}\npreInfo.attenuation=computeDistanceLightFalloff_GLTF(preInfo.lightDistanceSquared,light{X}.vLightFalloff.y);\npreInfo.attenuation*=computeDirectionalLightFalloff_GLTF(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightFalloff.z,light{X}.vLightFalloff.w);\n#elif defined(LIGHT_FALLOFF_PHYSICAL{X})\npreInfo.attenuation=computeDistanceLightFalloff_Physical(preInfo.lightDistanceSquared);\npreInfo.attenuation*=computeDirectionalLightFalloff_Physical(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightDirection.w);\n#elif defined(LIGHT_FALLOFF_STANDARD{X})\npreInfo.attenuation=computeDistanceLightFalloff_Standard(preInfo.lightOffset,light{X}.vLightFalloff.x);\npreInfo.attenuation*=computeDirectionalLightFalloff_Standard(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightDirection.w,light{X}.vLightData.w);\n#else\npreInfo.attenuation=computeDistanceLightFalloff(preInfo.lightOffset,preInfo.lightDistanceSquared,light{X}.vLightFalloff.x,light{X}.vLightFalloff.y);\npreInfo.attenuation*=computeDirectionalLightFalloff(light{X}.vLightDirection.xyz,preInfo.L,light{X}.vLightDirection.w,light{X}.vLightData.w,light{X}.vLightFalloff.z,light{X}.vLightFalloff.w);\n#endif\n#elif defined(POINTLIGHT{X})\n#ifdef LIGHT_FALLOFF_GLTF{X}\npreInfo.attenuation=computeDistanceLightFalloff_GLTF(preInfo.lightDistanceSquared,light{X}.vLightFalloff.y);\n#elif defined(LIGHT_FALLOFF_PHYSICAL{X})\npreInfo.attenuation=computeDistanceLightFalloff_Physical(preInfo.lightDistanceSquared);\n#elif defined(LIGHT_FALLOFF_STANDARD{X})\npreInfo.attenuation=computeDistanceLightFalloff_Standard(preInfo.lightOffset,light{X}.vLightFalloff.x);\n#else\npreInfo.attenuation=computeDistanceLightFalloff(preInfo.lightOffset,preInfo.lightDistanceSquared,light{X}.vLightFalloff.x,light{X}.vLightFalloff.y);\n#endif\n#else\npreInfo.attenuation=1.0;\n#endif\n\n\n#ifdef HEMILIGHT{X}\npreInfo.roughness=roughness;\n#else\npreInfo.roughness=adjustRoughnessFromLightProperties(roughness,light{X}.vLightSpecular.a,preInfo.lightDistance);\n#endif\n\n#ifdef HEMILIGHT{X}\ninfo.diffuse=computeHemisphericDiffuseLighting(preInfo,light{X}.vLightDiffuse.rgb,light{X}.vLightGround);\n#elif defined(SS_TRANSLUCENCY)\ninfo.diffuse=computeDiffuseAndTransmittedLighting(preInfo,light{X}.vLightDiffuse.rgb,subSurfaceOut.transmittance);\n#else\ninfo.diffuse=computeDiffuseLighting(preInfo,light{X}.vLightDiffuse.rgb);\n#endif\n\n#ifdef SPECULARTERM\n#ifdef ANISOTROPIC\ninfo.specular=computeAnisotropicSpecularLighting(preInfo,viewDirectionW,normalW,anisotropicOut.anisotropicTangent,anisotropicOut.anisotropicBitangent,anisotropicOut.anisotropy,clearcoatOut.specularEnvironmentR0,specularEnvironmentR90,AARoughnessFactors.x,light{X}.vLightDiffuse.rgb);\n#else\ninfo.specular=computeSpecularLighting(preInfo,normalW,clearcoatOut.specularEnvironmentR0,specularEnvironmentR90,AARoughnessFactors.x,light{X}.vLightDiffuse.rgb);\n#endif\n#endif\n\n#ifdef SHEEN\n#ifdef SHEEN_LINKWITHALBEDO\n\npreInfo.roughness=sheenOut.sheenIntensity;\n#else\n#ifdef HEMILIGHT{X}\npreInfo.roughness=sheenOut.sheenRoughness;\n#else\npreInfo.roughness=adjustRoughnessFromLightProperties(sheenOut.sheenRoughness,light{X}.vLightSpecular.a,preInfo.lightDistance);\n#endif\n#endif\ninfo.sheen=computeSheenLighting(preInfo,normalW,sheenOut.sheenColor,specularEnvironmentR90,AARoughnessFactors.x,light{X}.vLightDiffuse.rgb);\n#endif\n\n#ifdef CLEARCOAT\n\n#ifdef HEMILIGHT{X}\npreInfo.roughness=clearcoatOut.clearCoatRoughness;\n#else\npreInfo.roughness=adjustRoughnessFromLightProperties(clearcoatOut.clearCoatRoughness,light{X}.vLightSpecular.a,preInfo.lightDistance);\n#endif\ninfo.clearCoat=computeClearCoatLighting(preInfo,clearcoatOut.clearCoatNormalW,clearcoatOut.clearCoatAARoughnessFactors.x,clearcoatOut.clearCoatIntensity,light{X}.vLightDiffuse.rgb);\n#ifdef CLEARCOAT_TINT\n\nabsorption=computeClearCoatLightingAbsorption(clearcoatOut.clearCoatNdotVRefract,preInfo.L,clearcoatOut.clearCoatNormalW,clearcoatOut.clearCoatColor,clearcoatOut.clearCoatThickness,clearcoatOut.clearCoatIntensity);\ninfo.diffuse*=absorption;\n#ifdef SPECULARTERM\ninfo.specular*=absorption;\n#endif\n#endif\n\ninfo.diffuse*=info.clearCoat.w;\n#ifdef SPECULARTERM\ninfo.specular*=info.clearCoat.w;\n#endif\n#ifdef SHEEN\ninfo.sheen*=info.clearCoat.w;\n#endif\n#endif\n#else\n#ifdef SPOTLIGHT{X}\ninfo=computeSpotLighting(viewDirectionW,normalW,light{X}.vLightData,light{X}.vLightDirection,light{X}.vLightDiffuse.rgb,light{X}.vLightSpecular.rgb,light{X}.vLightDiffuse.a,glossiness);\n#elif defined(HEMILIGHT{X})\ninfo=computeHemisphericLighting(viewDirectionW,normalW,light{X}.vLightData,light{X}.vLightDiffuse.rgb,light{X}.vLightSpecular.rgb,light{X}.vLightGround,glossiness);\n#elif defined(POINTLIGHT{X}) || defined(DIRLIGHT{X})\ninfo=computeLighting(viewDirectionW,normalW,light{X}.vLightData,light{X}.vLightDiffuse.rgb,light{X}.vLightSpecular.rgb,light{X}.vLightDiffuse.a,glossiness);\n#endif\n#endif\n#ifdef PROJECTEDLIGHTTEXTURE{X}\ninfo.diffuse*=computeProjectionTextureDiffuseLighting(projectionLightSampler{X},textureProjectionMatrix{X});\n#endif\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nfor (int i=0; i<SHADOWCSMNUM_CASCADES{X}; i++)\n{\n#ifdef SHADOWCSM_RIGHTHANDED{X}\ndiff{X}=viewFrustumZ{X}[i]+vPositionFromCamera{X}.z;\n#else\ndiff{X}=viewFrustumZ{X}[i]-vPositionFromCamera{X}.z;\n#endif\nif (diff{X}>=0.) {\nindex{X}=i;\nbreak;\n}\n}\n#ifdef SHADOWCSMUSESHADOWMAXZ{X}\nif (index{X}>=0)\n#endif\n{\n#if defined(SHADOWPCF{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithCSMPCF1(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithCSMPCF3(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nshadow=computeShadowWithCSMPCF5(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCSS{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithCSMPCSS16(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithCSMPCSS32(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#else\nshadow=computeShadowWithCSMPCSS64(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#endif\n#else\nshadow=computeShadowCSM(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#ifdef SHADOWCSMDEBUG{X}\nshadowDebug{X}=vec3(shadow)*vCascadeColorsMultiplier{X}[index{X}];\n#endif\n#ifndef SHADOWCSMNOBLEND{X}\nfloat frustumLength=frustumLengths{X}[index{X}];\nfloat diffRatio=clamp(diff{X}/frustumLength,0.,1.)*cascadeBlendFactor{X};\nif (index{X}<(SHADOWCSMNUM_CASCADES{X}-1) && diffRatio<1.)\n{\nindex{X}+=1;\nfloat nextShadow=0.;\n#if defined(SHADOWPCF{X})\n#if defined(SHADOWLOWQUALITY{X})\nnextShadow=computeShadowWithCSMPCF1(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nnextShadow=computeShadowWithCSMPCF3(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nnextShadow=computeShadowWithCSMPCF5(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCSS{X})\n#if defined(SHADOWLOWQUALITY{X})\nnextShadow=computeShadowWithCSMPCSS16(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#elif defined(SHADOWMEDIUMQUALITY{X})\nnextShadow=computeShadowWithCSMPCSS32(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#else\nnextShadow=computeShadowWithCSMPCSS64(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w,lightSizeUVCorrection{X}[index{X}],depthCorrection{X}[index{X}],penumbraDarkness{X});\n#endif\n#else\nnextShadow=computeShadowCSM(float(index{X}),vPositionFromLight{X}[index{X}],vDepthMetric{X}[index{X}],shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\nshadow=mix(nextShadow,shadow,diffRatio);\n#ifdef SHADOWCSMDEBUG{X}\nshadowDebug{X}=mix(vec3(nextShadow)*vCascadeColorsMultiplier{X}[index{X}],shadowDebug{X},diffRatio);\n#endif\n}\n#endif\n}\n#elif defined(SHADOWCLOSEESM{X})\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowWithCloseESMCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.depthValues);\n#else\nshadow=computeShadowWithCloseESM(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWESM{X})\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowWithESMCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.depthValues);\n#else\nshadow=computeShadowWithESM(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.z,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPOISSON{X})\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowWithPoissonSamplingCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.x,light{X}.depthValues);\n#else\nshadow=computeShadowWithPoissonSampling(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCF{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithPCF1(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithPCF3(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nshadow=computeShadowWithPCF5(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.yz,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#elif defined(SHADOWPCSS{X})\n#if defined(SHADOWLOWQUALITY{X})\nshadow=computeShadowWithPCSS16(vPositionFromLight{X},vDepthMetric{X},depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#elif defined(SHADOWMEDIUMQUALITY{X})\nshadow=computeShadowWithPCSS32(vPositionFromLight{X},vDepthMetric{X},depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#else\nshadow=computeShadowWithPCSS64(vPositionFromLight{X},vDepthMetric{X},depthSampler{X},shadowSampler{X},light{X}.shadowsInfo.y,light{X}.shadowsInfo.z,light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#else\n#if defined(SHADOWCUBE{X})\nshadow=computeShadowCube(light{X}.vLightData.xyz,shadowSampler{X},light{X}.shadowsInfo.x,light{X}.depthValues);\n#else\nshadow=computeShadow(vPositionFromLight{X},vDepthMetric{X},shadowSampler{X},light{X}.shadowsInfo.x,light{X}.shadowsInfo.w);\n#endif\n#endif\n#ifdef SHADOWONLY\n#ifndef SHADOWINUSE\n#define SHADOWINUSE\n#endif\nglobalShadow+=shadow;\nshadowLightCount+=1.0;\n#endif\n#else\nshadow=1.;\n#endif\n#ifndef SHADOWONLY\n#ifdef CUSTOMUSERLIGHTING\ndiffuseBase+=computeCustomDiffuseLighting(info,diffuseBase,shadow);\n#ifdef SPECULARTERM\nspecularBase+=computeCustomSpecularLighting(info,specularBase,shadow);\n#endif\n#elif defined(LIGHTMAP) && defined(LIGHTMAPEXCLUDED{X})\ndiffuseBase+=lightmapColor.rgb*shadow;\n#ifdef SPECULARTERM\n#ifndef LIGHTMAPNOSPECULAR{X}\nspecularBase+=info.specular*shadow*lightmapColor.rgb;\n#endif\n#endif\n#ifdef CLEARCOAT\n#ifndef LIGHTMAPNOSPECULAR{X}\nclearCoatBase+=info.clearCoat.rgb*shadow*lightmapColor.rgb;\n#endif\n#endif\n#ifdef SHEEN\n#ifndef LIGHTMAPNOSPECULAR{X}\nsheenBase+=info.sheen.rgb*shadow;\n#endif\n#endif\n#else\n#ifdef SHADOWCSMDEBUG{X}\ndiffuseBase+=info.diffuse*shadowDebug{X};\n#else\ndiffuseBase+=info.diffuse*shadow;\n#endif\n#ifdef SPECULARTERM\nspecularBase+=info.specular*shadow;\n#endif\n#ifdef CLEARCOAT\nclearCoatBase+=info.clearCoat.rgb*shadow;\n#endif\n#ifdef SHEEN\nsheenBase+=info.sheen.rgb*shadow;\n#endif\n#endif\n#endif\n#endif";
+var name$w = 'fogFragment';
+var shader$w = "#ifdef FOG\nfloat fog=CalcFogFactor();\n#ifdef PBR\nfog=toLinearSpace(fog);\n#endif\ncolor.rgb=mix(vFogColor,color.rgb,fog);\n#endif";
 ShaderStore.IncludesShadersStore[name$w] = shader$w;
 
-var name$v = 'logDepthFragment';
-var shader$v = "#ifdef LOGARITHMICDEPTH\ngl_FragDepthEXT=log2(vFragmentDepth)*logarithmicDepthConstant*0.5;\n#endif";
-ShaderStore.IncludesShadersStore[name$v] = shader$v;
+var name$v = 'defaultPixelShader';
+var shader$v = "#include<__decl__defaultFragment>\n#if defined(BUMP) || !defined(NORMAL)\n#extension GL_OES_standard_derivatives : enable\n#endif\n#include<prePassDeclaration>[SCENE_MRT_COUNT]\n#include<oitDeclaration>\n#define CUSTOM_FRAGMENT_BEGIN\n#ifdef LOGARITHMICDEPTH\n#extension GL_EXT_frag_depth : enable\n#endif\n\n#define RECIPROCAL_PI2 0.15915494\n\nvarying vec3 vPositionW;\n#ifdef NORMAL\nvarying vec3 vNormalW;\n#endif\n#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#endif\n#include<mainUVVaryingDeclaration>[1..7]\n\n#include<helperFunctions>\n\n#include<__decl__lightFragment>[0..maxSimultaneousLights]\n#include<lightsFragmentFunctions>\n#include<shadowsFragmentFunctions>\n\n#include<samplerFragmentDeclaration>(_DEFINENAME_,DIFFUSE,_VARYINGNAME_,Diffuse,_SAMPLERNAME_,diffuse)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,AMBIENT,_VARYINGNAME_,Ambient,_SAMPLERNAME_,ambient)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,OPACITY,_VARYINGNAME_,Opacity,_SAMPLERNAME_,opacity)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,EMISSIVE,_VARYINGNAME_,Emissive,_SAMPLERNAME_,emissive)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,LIGHTMAP,_VARYINGNAME_,Lightmap,_SAMPLERNAME_,lightmap)\n#ifdef REFRACTION\n#ifdef REFRACTIONMAP_3D\nuniform samplerCube refractionCubeSampler;\n#else\nuniform sampler2D refraction2DSampler;\n#endif\n#endif\n#if defined(SPECULARTERM)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,SPECULAR,_VARYINGNAME_,Specular,_SAMPLERNAME_,specular)\n#endif\n\n#include<fresnelFunction>\n\n#ifdef REFLECTION\n#ifdef REFLECTIONMAP_3D\nuniform samplerCube reflectionCubeSampler;\n#else\nuniform sampler2D reflection2DSampler;\n#endif\n#ifdef REFLECTIONMAP_SKYBOX\nvarying vec3 vPositionUVW;\n#else\n#if defined(REFLECTIONMAP_EQUIRECTANGULAR_FIXED) || defined(REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED)\nvarying vec3 vDirectionW;\n#endif\n#endif\n#include<reflectionFunction>\n#endif\n#include<imageProcessingDeclaration>\n#include<imageProcessingFunctions>\n#include<bumpFragmentMainFunctions>\n#include<bumpFragmentFunctions>\n#include<clipPlaneFragmentDeclaration>\n#include<logDepthDeclaration>\n#include<fogFragmentDeclaration>\n#define CUSTOM_FRAGMENT_DEFINITIONS\nvoid main(void) {\n#define CUSTOM_FRAGMENT_MAIN_BEGIN\n#include<oitFragment>\n#include<clipPlaneFragment>\nvec3 viewDirectionW=normalize(vEyePosition.xyz-vPositionW);\n\nvec4 baseColor=vec4(1.,1.,1.,1.);\nvec3 diffuseColor=vDiffuseColor.rgb;\n\nfloat alpha=vDiffuseColor.a;\n\n#ifdef NORMAL\nvec3 normalW=normalize(vNormalW);\n#else\nvec3 normalW=normalize(-cross(dFdx(vPositionW),dFdy(vPositionW)));\n#endif\n#include<bumpFragment>\n#ifdef TWOSIDEDLIGHTING\nnormalW=gl_FrontFacing ? normalW : -normalW;\n#endif\n#ifdef DIFFUSE\nbaseColor=texture2D(diffuseSampler,vDiffuseUV+uvOffset);\n#if defined(ALPHATEST) && !defined(ALPHATEST_AFTERALLALPHACOMPUTATIONS)\nif (baseColor.a<alphaCutOff)\ndiscard;\n#endif\n#ifdef ALPHAFROMDIFFUSE\nalpha*=baseColor.a;\n#endif\n#define CUSTOM_FRAGMENT_UPDATE_ALPHA\nbaseColor.rgb*=vDiffuseInfos.y;\n#endif\n#include<depthPrePass>\n#ifdef VERTEXCOLOR\nbaseColor.rgb*=vColor.rgb;\n#endif\n#ifdef DETAIL\nbaseColor.rgb=baseColor.rgb*2.0*mix(0.5,detailColor.r,vDetailInfos.y);\n#endif\n#define CUSTOM_FRAGMENT_UPDATE_DIFFUSE\n\nvec3 baseAmbientColor=vec3(1.,1.,1.);\n#ifdef AMBIENT\nbaseAmbientColor=texture2D(ambientSampler,vAmbientUV+uvOffset).rgb*vAmbientInfos.y;\n#endif\n#define CUSTOM_FRAGMENT_BEFORE_LIGHTS\n\n#ifdef SPECULARTERM\nfloat glossiness=vSpecularColor.a;\nvec3 specularColor=vSpecularColor.rgb;\n#ifdef SPECULAR\nvec4 specularMapColor=texture2D(specularSampler,vSpecularUV+uvOffset);\nspecularColor=specularMapColor.rgb;\n#ifdef GLOSSINESS\nglossiness=glossiness*specularMapColor.a;\n#endif\n#endif\n#else\nfloat glossiness=0.;\n#endif\n\nvec3 diffuseBase=vec3(0.,0.,0.);\nlightingInfo info;\n#ifdef SPECULARTERM\nvec3 specularBase=vec3(0.,0.,0.);\n#endif\nfloat shadow=1.;\n#ifdef LIGHTMAP\nvec4 lightmapColor=texture2D(lightmapSampler,vLightmapUV+uvOffset);\n#ifdef RGBDLIGHTMAP\nlightmapColor.rgb=fromRGBD(lightmapColor);\n#endif\nlightmapColor.rgb*=vLightmapInfos.y;\n#endif\n#include<lightFragment>[0..maxSimultaneousLights]\n\nvec4 refractionColor=vec4(0.,0.,0.,1.);\n#ifdef REFRACTION\nvec3 refractionVector=normalize(refract(-viewDirectionW,normalW,vRefractionInfos.y));\n#ifdef REFRACTIONMAP_3D\n#ifdef USE_LOCAL_REFRACTIONMAP_CUBIC\nrefractionVector=parallaxCorrectNormal(vPositionW,refractionVector,vRefractionSize,vRefractionPosition);\n#endif\nrefractionVector.y=refractionVector.y*vRefractionInfos.w;\nif (dot(refractionVector,viewDirectionW)<1.0) {\nrefractionColor=textureCube(refractionCubeSampler,refractionVector);\n}\n#else\nvec3 vRefractionUVW=vec3(refractionMatrix*(view*vec4(vPositionW+refractionVector*vRefractionInfos.z,1.0)));\nvec2 refractionCoords=vRefractionUVW.xy/vRefractionUVW.z;\nrefractionCoords.y=1.0-refractionCoords.y;\nrefractionColor=texture2D(refraction2DSampler,refractionCoords);\n#endif\n#ifdef RGBDREFRACTION\nrefractionColor.rgb=fromRGBD(refractionColor);\n#endif\n#ifdef IS_REFRACTION_LINEAR\nrefractionColor.rgb=toGammaSpace(refractionColor.rgb);\n#endif\nrefractionColor.rgb*=vRefractionInfos.x;\n#endif\n\nvec4 reflectionColor=vec4(0.,0.,0.,1.);\n#ifdef REFLECTION\nvec3 vReflectionUVW=computeReflectionCoords(vec4(vPositionW,1.0),normalW);\n#ifdef REFLECTIONMAP_OPPOSITEZ\nvReflectionUVW.z*=-1.0;\n#endif\n#ifdef REFLECTIONMAP_3D\n#ifdef ROUGHNESS\nfloat bias=vReflectionInfos.y;\n#ifdef SPECULARTERM\n#ifdef SPECULAR\n#ifdef GLOSSINESS\nbias*=(1.0-specularMapColor.a);\n#endif\n#endif\n#endif\nreflectionColor=textureCube(reflectionCubeSampler,vReflectionUVW,bias);\n#else\nreflectionColor=textureCube(reflectionCubeSampler,vReflectionUVW);\n#endif\n#else\nvec2 coords=vReflectionUVW.xy;\n#ifdef REFLECTIONMAP_PROJECTION\ncoords/=vReflectionUVW.z;\n#endif\ncoords.y=1.0-coords.y;\nreflectionColor=texture2D(reflection2DSampler,coords);\n#endif\n#ifdef RGBDREFLECTION\nreflectionColor.rgb=fromRGBD(reflectionColor);\n#endif\n#ifdef IS_REFLECTION_LINEAR\nreflectionColor.rgb=toGammaSpace(reflectionColor.rgb);\n#endif\nreflectionColor.rgb*=vReflectionInfos.x;\n#ifdef REFLECTIONFRESNEL\nfloat reflectionFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,reflectionRightColor.a,reflectionLeftColor.a);\n#ifdef REFLECTIONFRESNELFROMSPECULAR\n#ifdef SPECULARTERM\nreflectionColor.rgb*=specularColor.rgb*(1.0-reflectionFresnelTerm)+reflectionFresnelTerm*reflectionRightColor.rgb;\n#else\nreflectionColor.rgb*=reflectionLeftColor.rgb*(1.0-reflectionFresnelTerm)+reflectionFresnelTerm*reflectionRightColor.rgb;\n#endif\n#else\nreflectionColor.rgb*=reflectionLeftColor.rgb*(1.0-reflectionFresnelTerm)+reflectionFresnelTerm*reflectionRightColor.rgb;\n#endif\n#endif\n#endif\n#ifdef REFRACTIONFRESNEL\nfloat refractionFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,refractionRightColor.a,refractionLeftColor.a);\nrefractionColor.rgb*=refractionLeftColor.rgb*(1.0-refractionFresnelTerm)+refractionFresnelTerm*refractionRightColor.rgb;\n#endif\n#ifdef OPACITY\nvec4 opacityMap=texture2D(opacitySampler,vOpacityUV+uvOffset);\n#ifdef OPACITYRGB\nopacityMap.rgb=opacityMap.rgb*vec3(0.3,0.59,0.11);\nalpha*=(opacityMap.x+opacityMap.y+opacityMap.z)* vOpacityInfos.y;\n#else\nalpha*=opacityMap.a*vOpacityInfos.y;\n#endif\n#endif\n#ifdef VERTEXALPHA\nalpha*=vColor.a;\n#endif\n#ifdef OPACITYFRESNEL\nfloat opacityFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,opacityParts.z,opacityParts.w);\nalpha+=opacityParts.x*(1.0-opacityFresnelTerm)+opacityFresnelTerm*opacityParts.y;\n#endif\n#ifdef ALPHATEST\n#ifdef ALPHATEST_AFTERALLALPHACOMPUTATIONS\nif (alpha<alphaCutOff)\ndiscard;\n#endif\n#ifndef ALPHABLEND\n\nalpha=1.0;\n#endif\n#endif\n\nvec3 emissiveColor=vEmissiveColor;\n#ifdef EMISSIVE\nemissiveColor+=texture2D(emissiveSampler,vEmissiveUV+uvOffset).rgb*vEmissiveInfos.y;\n#endif\n#ifdef EMISSIVEFRESNEL\nfloat emissiveFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,emissiveRightColor.a,emissiveLeftColor.a);\nemissiveColor*=emissiveLeftColor.rgb*(1.0-emissiveFresnelTerm)+emissiveFresnelTerm*emissiveRightColor.rgb;\n#endif\n\n#ifdef DIFFUSEFRESNEL\nfloat diffuseFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,diffuseRightColor.a,diffuseLeftColor.a);\ndiffuseBase*=diffuseLeftColor.rgb*(1.0-diffuseFresnelTerm)+diffuseFresnelTerm*diffuseRightColor.rgb;\n#endif\n\n#ifdef EMISSIVEASILLUMINATION\nvec3 finalDiffuse=clamp(diffuseBase*diffuseColor+vAmbientColor,0.0,1.0)*baseColor.rgb;\n#else\n#ifdef LINKEMISSIVEWITHDIFFUSE\nvec3 finalDiffuse=clamp((diffuseBase+emissiveColor)*diffuseColor+vAmbientColor,0.0,1.0)*baseColor.rgb;\n#else\nvec3 finalDiffuse=clamp(diffuseBase*diffuseColor+emissiveColor+vAmbientColor,0.0,1.0)*baseColor.rgb;\n#endif\n#endif\n#ifdef SPECULARTERM\nvec3 finalSpecular=specularBase*specularColor;\n#ifdef SPECULAROVERALPHA\nalpha=clamp(alpha+dot(finalSpecular,vec3(0.3,0.59,0.11)),0.,1.);\n#endif\n#else\nvec3 finalSpecular=vec3(0.0);\n#endif\n#ifdef REFLECTIONOVERALPHA\nalpha=clamp(alpha+dot(reflectionColor.rgb,vec3(0.3,0.59,0.11)),0.,1.);\n#endif\n\n#ifdef EMISSIVEASILLUMINATION\nvec4 color=vec4(clamp(finalDiffuse*baseAmbientColor+finalSpecular+reflectionColor.rgb+emissiveColor+refractionColor.rgb,0.0,1.0),alpha);\n#else\nvec4 color=vec4(finalDiffuse*baseAmbientColor+finalSpecular+reflectionColor.rgb+refractionColor.rgb,alpha);\n#endif\n\n#ifdef LIGHTMAP\n#ifndef LIGHTMAPEXCLUDED\n#ifdef USELIGHTMAPASSHADOWMAP\ncolor.rgb*=lightmapColor.rgb;\n#else\ncolor.rgb+=lightmapColor.rgb;\n#endif\n#endif\n#endif\n#define CUSTOM_FRAGMENT_BEFORE_FOG\ncolor.rgb=max(color.rgb,0.);\n#include<logDepthFragment>\n#include<fogFragment>\n\n\n#ifdef IMAGEPROCESSINGPOSTPROCESS\ncolor.rgb=toLinearSpace(color.rgb);\n#else\n#ifdef IMAGEPROCESSING\ncolor.rgb=toLinearSpace(color.rgb);\ncolor=applyImageProcessing(color);\n#endif\n#endif\ncolor.a*=visibility;\n#ifdef PREMULTIPLYALPHA\n\ncolor.rgb*=color.a;\n#endif\n#define CUSTOM_FRAGMENT_BEFORE_FRAGCOLOR\n#ifdef PREPASS\nfloat writeGeometryInfo=color.a>0.4 ? 1.0 : 0.0;\ngl_FragData[0]=color;\n#ifdef PREPASS_POSITION\ngl_FragData[PREPASS_POSITION_INDEX]=vec4(vPositionW,writeGeometryInfo);\n#endif\n#ifdef PREPASS_VELOCITY\nvec2 a=(vCurrentPosition.xy/vCurrentPosition.w)*0.5+0.5;\nvec2 b=(vPreviousPosition.xy/vPreviousPosition.w)*0.5+0.5;\nvec2 velocity=abs(a-b);\nvelocity=vec2(pow(velocity.x,1.0/3.0),pow(velocity.y,1.0/3.0))*sign(a-b)*0.5+0.5;\ngl_FragData[PREPASS_VELOCITY_INDEX]=vec4(velocity,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_IRRADIANCE\ngl_FragData[PREPASS_IRRADIANCE_INDEX]=vec4(0.0,0.0,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_DEPTH\ngl_FragData[PREPASS_DEPTH_INDEX]=vec4(vViewPos.z,0.0,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_NORMAL\ngl_FragData[PREPASS_NORMAL_INDEX]=vec4((view*vec4(normalW,0.0)).rgb,writeGeometryInfo);\n#endif\n#ifdef PREPASS_ALBEDO_SQRT\ngl_FragData[PREPASS_ALBEDO_SQRT_INDEX]=vec4(0.0,0.0,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_REFLECTIVITY\n#if defined(SPECULAR)\ngl_FragData[PREPASS_REFLECTIVITY_INDEX]=vec4(specularMapColor.rgb,writeGeometryInfo);\n#else\ngl_FragData[PREPASS_REFLECTIVITY_INDEX]=vec4(0.0,0.0,0.0,writeGeometryInfo);\n#endif\n#endif\n#endif\n#if !defined(PREPASS) || defined(WEBGL2)\ngl_FragColor=color;\n#endif\n#if ORDER_INDEPENDENT_TRANSPARENCY\nif (fragDepth == nearestDepth) {\nfrontColor.rgb+=color.rgb*color.a*alphaMultiplier;\nfrontColor.a=1.0-alphaMultiplier*(1.0-color.a);\n} else {\nbackColor+=color;\n}\n#endif\n}\n";
+ShaderStore.ShadersStore[name$v] = shader$v;
 
-var name$u = 'fogFragment';
-var shader$u = "#ifdef FOG\nfloat fog=CalcFogFactor();\ncolor.rgb=fog*color.rgb+(1.0-fog)*vFogColor;\n#endif";
+var name$u = 'defaultVertexDeclaration';
+var shader$u = "\nuniform mat4 viewProjection;\nuniform mat4 view;\n#ifdef DIFFUSE\nuniform mat4 diffuseMatrix;\nuniform vec2 vDiffuseInfos;\n#endif\n#ifdef AMBIENT\nuniform mat4 ambientMatrix;\nuniform vec2 vAmbientInfos;\n#endif\n#ifdef OPACITY\nuniform mat4 opacityMatrix;\nuniform vec2 vOpacityInfos;\n#endif\n#ifdef EMISSIVE\nuniform vec2 vEmissiveInfos;\nuniform mat4 emissiveMatrix;\n#endif\n#ifdef LIGHTMAP\nuniform vec2 vLightmapInfos;\nuniform mat4 lightmapMatrix;\n#endif\n#if defined(SPECULAR) && defined(SPECULARTERM)\nuniform vec2 vSpecularInfos;\nuniform mat4 specularMatrix;\n#endif\n#ifdef BUMP\nuniform vec3 vBumpInfos;\nuniform mat4 bumpMatrix;\n#endif\n#ifdef REFLECTION\nuniform mat4 reflectionMatrix;\n#endif\n#ifdef POINTSIZE\nuniform float pointSize;\n#endif\n#ifdef DETAIL\nuniform vec4 vDetailInfos;\nuniform mat4 detailMatrix;\n#endif";
 ShaderStore.IncludesShadersStore[name$u] = shader$u;
 
-var name$t = 'defaultPixelShader';
-var shader$t = "#include<__decl__defaultFragment>\n#if defined(BUMP) || !defined(NORMAL)\n#extension GL_OES_standard_derivatives : enable\n#endif\n#include<prePassDeclaration>[SCENE_MRT_COUNT]\n#define CUSTOM_FRAGMENT_BEGIN\n#ifdef LOGARITHMICDEPTH\n#extension GL_EXT_frag_depth : enable\n#endif\n\n#define RECIPROCAL_PI2 0.15915494\n\nvarying vec3 vPositionW;\n#ifdef NORMAL\nvarying vec3 vNormalW;\n#endif\n#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#endif\n#include<mainUVVaryingDeclaration>[1..7]\n\n#include<helperFunctions>\n\n#include<__decl__lightFragment>[0..maxSimultaneousLights]\n#include<lightsFragmentFunctions>\n#include<shadowsFragmentFunctions>\n\n#include<samplerFragmentDeclaration>(_DEFINENAME_,DIFFUSE,_VARYINGNAME_,Diffuse,_SAMPLERNAME_,diffuse)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,AMBIENT,_VARYINGNAME_,Ambient,_SAMPLERNAME_,ambient)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,OPACITY,_VARYINGNAME_,Opacity,_SAMPLERNAME_,opacity)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,EMISSIVE,_VARYINGNAME_,Emissive,_SAMPLERNAME_,emissive)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,LIGHTMAP,_VARYINGNAME_,Lightmap,_SAMPLERNAME_,lightmap)\n#ifdef REFRACTION\n#ifdef REFRACTIONMAP_3D\nuniform samplerCube refractionCubeSampler;\n#else\nuniform sampler2D refraction2DSampler;\n#endif\n#endif\n#if defined(SPECULARTERM)\n#include<samplerFragmentDeclaration>(_DEFINENAME_,SPECULAR,_VARYINGNAME_,Specular,_SAMPLERNAME_,specular)\n#endif\n\n#include<fresnelFunction>\n\n#ifdef REFLECTION\n#ifdef REFLECTIONMAP_3D\nuniform samplerCube reflectionCubeSampler;\n#else\nuniform sampler2D reflection2DSampler;\n#endif\n#ifdef REFLECTIONMAP_SKYBOX\nvarying vec3 vPositionUVW;\n#else\n#if defined(REFLECTIONMAP_EQUIRECTANGULAR_FIXED) || defined(REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED)\nvarying vec3 vDirectionW;\n#endif\n#endif\n#include<reflectionFunction>\n#endif\n#include<imageProcessingDeclaration>\n#include<imageProcessingFunctions>\n#include<bumpFragmentMainFunctions>\n#include<bumpFragmentFunctions>\n#include<clipPlaneFragmentDeclaration>\n#include<logDepthDeclaration>\n#include<fogFragmentDeclaration>\n#define CUSTOM_FRAGMENT_DEFINITIONS\nvoid main(void) {\n#define CUSTOM_FRAGMENT_MAIN_BEGIN\n#include<clipPlaneFragment>\nvec3 viewDirectionW=normalize(vEyePosition.xyz-vPositionW);\n\nvec4 baseColor=vec4(1.,1.,1.,1.);\nvec3 diffuseColor=vDiffuseColor.rgb;\n\nfloat alpha=vDiffuseColor.a;\n\n#ifdef NORMAL\nvec3 normalW=normalize(vNormalW);\n#else\nvec3 normalW=normalize(-cross(dFdx(vPositionW),dFdy(vPositionW)));\n#endif\n#include<bumpFragment>\n#ifdef TWOSIDEDLIGHTING\nnormalW=gl_FrontFacing ? normalW : -normalW;\n#endif\n#ifdef DIFFUSE\nbaseColor=texture2D(diffuseSampler,vDiffuseUV+uvOffset);\n#if defined(ALPHATEST) && !defined(ALPHATEST_AFTERALLALPHACOMPUTATIONS)\nif (baseColor.a<alphaCutOff)\ndiscard;\n#endif\n#ifdef ALPHAFROMDIFFUSE\nalpha*=baseColor.a;\n#endif\n#define CUSTOM_FRAGMENT_UPDATE_ALPHA\nbaseColor.rgb*=vDiffuseInfos.y;\n#endif\n#include<depthPrePass>\n#ifdef VERTEXCOLOR\nbaseColor.rgb*=vColor.rgb;\n#endif\n#ifdef DETAIL\nbaseColor.rgb=baseColor.rgb*2.0*mix(0.5,detailColor.r,vDetailInfos.y);\n#endif\n#define CUSTOM_FRAGMENT_UPDATE_DIFFUSE\n\nvec3 baseAmbientColor=vec3(1.,1.,1.);\n#ifdef AMBIENT\nbaseAmbientColor=texture2D(ambientSampler,vAmbientUV+uvOffset).rgb*vAmbientInfos.y;\n#endif\n#define CUSTOM_FRAGMENT_BEFORE_LIGHTS\n\n#ifdef SPECULARTERM\nfloat glossiness=vSpecularColor.a;\nvec3 specularColor=vSpecularColor.rgb;\n#ifdef SPECULAR\nvec4 specularMapColor=texture2D(specularSampler,vSpecularUV+uvOffset);\nspecularColor=specularMapColor.rgb;\n#ifdef GLOSSINESS\nglossiness=glossiness*specularMapColor.a;\n#endif\n#endif\n#else\nfloat glossiness=0.;\n#endif\n\nvec3 diffuseBase=vec3(0.,0.,0.);\nlightingInfo info;\n#ifdef SPECULARTERM\nvec3 specularBase=vec3(0.,0.,0.);\n#endif\nfloat shadow=1.;\n#ifdef LIGHTMAP\nvec4 lightmapColor=texture2D(lightmapSampler,vLightmapUV+uvOffset);\n#ifdef RGBDLIGHTMAP\nlightmapColor.rgb=fromRGBD(lightmapColor);\n#endif\nlightmapColor.rgb*=vLightmapInfos.y;\n#endif\n#include<lightFragment>[0..maxSimultaneousLights]\n\nvec4 refractionColor=vec4(0.,0.,0.,1.);\n#ifdef REFRACTION\nvec3 refractionVector=normalize(refract(-viewDirectionW,normalW,vRefractionInfos.y));\n#ifdef REFRACTIONMAP_3D\n#ifdef USE_LOCAL_REFRACTIONMAP_CUBIC\nrefractionVector=parallaxCorrectNormal(vPositionW,refractionVector,vRefractionSize,vRefractionPosition);\n#endif\nrefractionVector.y=refractionVector.y*vRefractionInfos.w;\nif (dot(refractionVector,viewDirectionW)<1.0) {\nrefractionColor=textureCube(refractionCubeSampler,refractionVector);\n}\n#else\nvec3 vRefractionUVW=vec3(refractionMatrix*(view*vec4(vPositionW+refractionVector*vRefractionInfos.z,1.0)));\nvec2 refractionCoords=vRefractionUVW.xy/vRefractionUVW.z;\nrefractionCoords.y=1.0-refractionCoords.y;\nrefractionColor=texture2D(refraction2DSampler,refractionCoords);\n#endif\n#ifdef RGBDREFRACTION\nrefractionColor.rgb=fromRGBD(refractionColor);\n#endif\n#ifdef IS_REFRACTION_LINEAR\nrefractionColor.rgb=toGammaSpace(refractionColor.rgb);\n#endif\nrefractionColor.rgb*=vRefractionInfos.x;\n#endif\n\nvec4 reflectionColor=vec4(0.,0.,0.,1.);\n#ifdef REFLECTION\nvec3 vReflectionUVW=computeReflectionCoords(vec4(vPositionW,1.0),normalW);\n#ifdef REFLECTIONMAP_OPPOSITEZ\nvReflectionUVW.z*=-1.0;\n#endif\n#ifdef REFLECTIONMAP_3D\n#ifdef ROUGHNESS\nfloat bias=vReflectionInfos.y;\n#ifdef SPECULARTERM\n#ifdef SPECULAR\n#ifdef GLOSSINESS\nbias*=(1.0-specularMapColor.a);\n#endif\n#endif\n#endif\nreflectionColor=textureCube(reflectionCubeSampler,vReflectionUVW,bias);\n#else\nreflectionColor=textureCube(reflectionCubeSampler,vReflectionUVW);\n#endif\n#else\nvec2 coords=vReflectionUVW.xy;\n#ifdef REFLECTIONMAP_PROJECTION\ncoords/=vReflectionUVW.z;\n#endif\ncoords.y=1.0-coords.y;\nreflectionColor=texture2D(reflection2DSampler,coords);\n#endif\n#ifdef RGBDREFLECTION\nreflectionColor.rgb=fromRGBD(reflectionColor);\n#endif\n#ifdef IS_REFLECTION_LINEAR\nreflectionColor.rgb=toGammaSpace(reflectionColor.rgb);\n#endif\nreflectionColor.rgb*=vReflectionInfos.x;\n#ifdef REFLECTIONFRESNEL\nfloat reflectionFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,reflectionRightColor.a,reflectionLeftColor.a);\n#ifdef REFLECTIONFRESNELFROMSPECULAR\n#ifdef SPECULARTERM\nreflectionColor.rgb*=specularColor.rgb*(1.0-reflectionFresnelTerm)+reflectionFresnelTerm*reflectionRightColor.rgb;\n#else\nreflectionColor.rgb*=reflectionLeftColor.rgb*(1.0-reflectionFresnelTerm)+reflectionFresnelTerm*reflectionRightColor.rgb;\n#endif\n#else\nreflectionColor.rgb*=reflectionLeftColor.rgb*(1.0-reflectionFresnelTerm)+reflectionFresnelTerm*reflectionRightColor.rgb;\n#endif\n#endif\n#endif\n#ifdef REFRACTIONFRESNEL\nfloat refractionFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,refractionRightColor.a,refractionLeftColor.a);\nrefractionColor.rgb*=refractionLeftColor.rgb*(1.0-refractionFresnelTerm)+refractionFresnelTerm*refractionRightColor.rgb;\n#endif\n#ifdef OPACITY\nvec4 opacityMap=texture2D(opacitySampler,vOpacityUV+uvOffset);\n#ifdef OPACITYRGB\nopacityMap.rgb=opacityMap.rgb*vec3(0.3,0.59,0.11);\nalpha*=(opacityMap.x+opacityMap.y+opacityMap.z)* vOpacityInfos.y;\n#else\nalpha*=opacityMap.a*vOpacityInfos.y;\n#endif\n#endif\n#ifdef VERTEXALPHA\nalpha*=vColor.a;\n#endif\n#ifdef OPACITYFRESNEL\nfloat opacityFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,opacityParts.z,opacityParts.w);\nalpha+=opacityParts.x*(1.0-opacityFresnelTerm)+opacityFresnelTerm*opacityParts.y;\n#endif\n#ifdef ALPHATEST\n#ifdef ALPHATEST_AFTERALLALPHACOMPUTATIONS\nif (alpha<alphaCutOff)\ndiscard;\n#endif\n#ifndef ALPHABLEND\n\nalpha=1.0;\n#endif\n#endif\n\nvec3 emissiveColor=vEmissiveColor;\n#ifdef EMISSIVE\nemissiveColor+=texture2D(emissiveSampler,vEmissiveUV+uvOffset).rgb*vEmissiveInfos.y;\n#endif\n#ifdef EMISSIVEFRESNEL\nfloat emissiveFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,emissiveRightColor.a,emissiveLeftColor.a);\nemissiveColor*=emissiveLeftColor.rgb*(1.0-emissiveFresnelTerm)+emissiveFresnelTerm*emissiveRightColor.rgb;\n#endif\n\n#ifdef DIFFUSEFRESNEL\nfloat diffuseFresnelTerm=computeFresnelTerm(viewDirectionW,normalW,diffuseRightColor.a,diffuseLeftColor.a);\ndiffuseBase*=diffuseLeftColor.rgb*(1.0-diffuseFresnelTerm)+diffuseFresnelTerm*diffuseRightColor.rgb;\n#endif\n\n#ifdef EMISSIVEASILLUMINATION\nvec3 finalDiffuse=clamp(diffuseBase*diffuseColor+vAmbientColor,0.0,1.0)*baseColor.rgb;\n#else\n#ifdef LINKEMISSIVEWITHDIFFUSE\nvec3 finalDiffuse=clamp((diffuseBase+emissiveColor)*diffuseColor+vAmbientColor,0.0,1.0)*baseColor.rgb;\n#else\nvec3 finalDiffuse=clamp(diffuseBase*diffuseColor+emissiveColor+vAmbientColor,0.0,1.0)*baseColor.rgb;\n#endif\n#endif\n#ifdef SPECULARTERM\nvec3 finalSpecular=specularBase*specularColor;\n#ifdef SPECULAROVERALPHA\nalpha=clamp(alpha+dot(finalSpecular,vec3(0.3,0.59,0.11)),0.,1.);\n#endif\n#else\nvec3 finalSpecular=vec3(0.0);\n#endif\n#ifdef REFLECTIONOVERALPHA\nalpha=clamp(alpha+dot(reflectionColor.rgb,vec3(0.3,0.59,0.11)),0.,1.);\n#endif\n\n#ifdef EMISSIVEASILLUMINATION\nvec4 color=vec4(clamp(finalDiffuse*baseAmbientColor+finalSpecular+reflectionColor.rgb+emissiveColor+refractionColor.rgb,0.0,1.0),alpha);\n#else\nvec4 color=vec4(finalDiffuse*baseAmbientColor+finalSpecular+reflectionColor.rgb+refractionColor.rgb,alpha);\n#endif\n\n#ifdef LIGHTMAP\n#ifndef LIGHTMAPEXCLUDED\n#ifdef USELIGHTMAPASSHADOWMAP\ncolor.rgb*=lightmapColor.rgb;\n#else\ncolor.rgb+=lightmapColor.rgb;\n#endif\n#endif\n#endif\n#define CUSTOM_FRAGMENT_BEFORE_FOG\ncolor.rgb=max(color.rgb,0.);\n#include<logDepthFragment>\n#include<fogFragment>\n\n\n#ifdef IMAGEPROCESSINGPOSTPROCESS\ncolor.rgb=toLinearSpace(color.rgb);\n#else\n#ifdef IMAGEPROCESSING\ncolor.rgb=toLinearSpace(color.rgb);\ncolor=applyImageProcessing(color);\n#endif\n#endif\ncolor.a*=visibility;\n#ifdef PREMULTIPLYALPHA\n\ncolor.rgb*=color.a;\n#endif\n#define CUSTOM_FRAGMENT_BEFORE_FRAGCOLOR\n#ifdef PREPASS\nfloat writeGeometryInfo=color.a>0.4 ? 1.0 : 0.0;\ngl_FragData[0]=color;\n#ifdef PREPASS_POSITION\ngl_FragData[PREPASS_POSITION_INDEX]=vec4(vPositionW,writeGeometryInfo);\n#endif\n#ifdef PREPASS_VELOCITY\nvec2 a=(vCurrentPosition.xy/vCurrentPosition.w)*0.5+0.5;\nvec2 b=(vPreviousPosition.xy/vPreviousPosition.w)*0.5+0.5;\nvec2 velocity=abs(a-b);\nvelocity=vec2(pow(velocity.x,1.0/3.0),pow(velocity.y,1.0/3.0))*sign(a-b)*0.5+0.5;\ngl_FragData[PREPASS_VELOCITY_INDEX]=vec4(velocity,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_IRRADIANCE\ngl_FragData[PREPASS_IRRADIANCE_INDEX]=vec4(0.0,0.0,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_DEPTH\ngl_FragData[PREPASS_DEPTH_INDEX]=vec4(vViewPos.z,0.0,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_NORMAL\ngl_FragData[PREPASS_NORMAL_INDEX]=vec4((view*vec4(normalW,0.0)).rgb,writeGeometryInfo);\n#endif\n#ifdef PREPASS_ALBEDO\ngl_FragData[PREPASS_ALBEDO_INDEX]=vec4(0.0,0.0,0.0,writeGeometryInfo);\n#endif\n#ifdef PREPASS_REFLECTIVITY\n#if defined(SPECULAR)\ngl_FragData[PREPASS_REFLECTIVITY_INDEX]=vec4(specularMapColor.rgb,writeGeometryInfo);\n#else\ngl_FragData[PREPASS_REFLECTIVITY_INDEX]=vec4(0.0,0.0,0.0,writeGeometryInfo);\n#endif\n#endif\n#endif\n#if !defined(PREPASS) || defined(WEBGL2)\ngl_FragColor=color;\n#endif\n}\n";
-ShaderStore.ShadersStore[name$t] = shader$t;
+var name$t = 'uvAttributeDeclaration';
+var shader$t = "#ifdef UV{X}\nattribute vec2 uv{X};\n#endif\n";
+ShaderStore.IncludesShadersStore[name$t] = shader$t;
 
-var name$s = 'defaultVertexDeclaration';
-var shader$s = "\nuniform mat4 viewProjection;\nuniform mat4 view;\n#ifdef DIFFUSE\nuniform mat4 diffuseMatrix;\nuniform vec2 vDiffuseInfos;\n#endif\n#ifdef AMBIENT\nuniform mat4 ambientMatrix;\nuniform vec2 vAmbientInfos;\n#endif\n#ifdef OPACITY\nuniform mat4 opacityMatrix;\nuniform vec2 vOpacityInfos;\n#endif\n#ifdef EMISSIVE\nuniform vec2 vEmissiveInfos;\nuniform mat4 emissiveMatrix;\n#endif\n#ifdef LIGHTMAP\nuniform vec2 vLightmapInfos;\nuniform mat4 lightmapMatrix;\n#endif\n#if defined(SPECULAR) && defined(SPECULARTERM)\nuniform vec2 vSpecularInfos;\nuniform mat4 specularMatrix;\n#endif\n#ifdef BUMP\nuniform vec3 vBumpInfos;\nuniform mat4 bumpMatrix;\n#endif\n#ifdef REFLECTION\nuniform mat4 reflectionMatrix;\n#endif\n#ifdef POINTSIZE\nuniform float pointSize;\n#endif\n#ifdef DETAIL\nuniform vec4 vDetailInfos;\nuniform mat4 detailMatrix;\n#endif";
+var name$s = 'bonesDeclaration';
+var shader$s = "#if NUM_BONE_INFLUENCERS>0\nattribute vec4 matricesIndices;\nattribute vec4 matricesWeights;\n#if NUM_BONE_INFLUENCERS>4\nattribute vec4 matricesIndicesExtra;\nattribute vec4 matricesWeightsExtra;\n#endif\n#ifndef BAKED_VERTEX_ANIMATION_TEXTURE\n#ifdef BONETEXTURE\nuniform sampler2D boneSampler;\nuniform float boneTextureWidth;\n#else\nuniform mat4 mBones[BonesPerMesh];\n#ifdef BONES_VELOCITY_ENABLED\nuniform mat4 mPreviousBones[BonesPerMesh];\n#endif\n#endif\n#ifdef BONETEXTURE\n#define inline\nmat4 readMatrixFromRawSampler(sampler2D smp,float index)\n{\nfloat offset=index*4.0;\nfloat dx=1.0/boneTextureWidth;\nvec4 m0=texture2D(smp,vec2(dx*(offset+0.5),0.));\nvec4 m1=texture2D(smp,vec2(dx*(offset+1.5),0.));\nvec4 m2=texture2D(smp,vec2(dx*(offset+2.5),0.));\nvec4 m3=texture2D(smp,vec2(dx*(offset+3.5),0.));\nreturn mat4(m0,m1,m2,m3);\n}\n#endif\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$s] = shader$s;
 
-var name$r = 'uvAttributeDeclaration';
-var shader$r = "#ifdef UV{X}\nattribute vec2 uv{X};\n#endif\n";
+var name$r = 'bakedVertexAnimationDeclaration';
+var shader$r = "#ifdef BAKED_VERTEX_ANIMATION_TEXTURE\nuniform float bakedVertexAnimationTime;\nuniform vec2 bakedVertexAnimationTextureSizeInverted;\nuniform vec4 bakedVertexAnimationSettings;\nuniform sampler2D bakedVertexAnimationTexture;\n#ifdef INSTANCES\nattribute vec4 bakedVertexAnimationSettingsInstanced;\n#endif\n#define inline\nmat4 readMatrixFromRawSamplerVAT(sampler2D smp,float index,float frame)\n{\nfloat offset=index*4.0;\nfloat frameUV=(frame+0.5)*bakedVertexAnimationTextureSizeInverted.y;\nfloat dx=bakedVertexAnimationTextureSizeInverted.x;\nvec4 m0=texture2D(smp,vec2(dx*(offset+0.5),frameUV));\nvec4 m1=texture2D(smp,vec2(dx*(offset+1.5),frameUV));\nvec4 m2=texture2D(smp,vec2(dx*(offset+2.5),frameUV));\nvec4 m3=texture2D(smp,vec2(dx*(offset+3.5),frameUV));\nreturn mat4(m0,m1,m2,m3);\n}\n#endif";
 ShaderStore.IncludesShadersStore[name$r] = shader$r;
 
-var name$q = 'bonesDeclaration';
-var shader$q = "#if NUM_BONE_INFLUENCERS>0\n#ifdef BONETEXTURE\nuniform sampler2D boneSampler;\nuniform float boneTextureWidth;\n#else\nuniform mat4 mBones[BonesPerMesh];\n#ifdef BONES_VELOCITY_ENABLED\nuniform mat4 mPreviousBones[BonesPerMesh];\n#endif\n#endif\nattribute vec4 matricesIndices;\nattribute vec4 matricesWeights;\n#if NUM_BONE_INFLUENCERS>4\nattribute vec4 matricesIndicesExtra;\nattribute vec4 matricesWeightsExtra;\n#endif\n#ifdef BONETEXTURE\n#define inline\nmat4 readMatrixFromRawSampler(sampler2D smp,float index)\n{\nfloat offset=index*4.0;\nfloat dx=1.0/boneTextureWidth;\nvec4 m0=texture2D(smp,vec2(dx*(offset+0.5),0.));\nvec4 m1=texture2D(smp,vec2(dx*(offset+1.5),0.));\nvec4 m2=texture2D(smp,vec2(dx*(offset+2.5),0.));\nvec4 m3=texture2D(smp,vec2(dx*(offset+3.5),0.));\nreturn mat4(m0,m1,m2,m3);\n}\n#endif\n#endif";
+var name$q = 'instancesDeclaration';
+var shader$q = "#ifdef INSTANCES\nattribute vec4 world0;\nattribute vec4 world1;\nattribute vec4 world2;\nattribute vec4 world3;\n#if defined(THIN_INSTANCES) && !defined(WORLD_UBO)\nuniform mat4 world;\n#endif\n#if defined(VELOCITY) || defined(PREPASS_VELOCITY)\nattribute vec4 previousWorld0;\nattribute vec4 previousWorld1;\nattribute vec4 previousWorld2;\nattribute vec4 previousWorld3;\n#ifdef THIN_INSTANCES\nuniform mat4 previousWorld;\n#endif\n#endif\n#else\n#if !defined(WORLD_UBO)\nuniform mat4 world;\n#endif\n#if defined(VELOCITY) || defined(PREPASS_VELOCITY)\nuniform mat4 previousWorld;\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$q] = shader$q;
 
-var name$p = 'instancesDeclaration';
-var shader$p = "#ifdef INSTANCES\nattribute vec4 world0;\nattribute vec4 world1;\nattribute vec4 world2;\nattribute vec4 world3;\n#if defined(THIN_INSTANCES) && !defined(WORLD_UBO)\nuniform mat4 world;\n#endif\n#if defined(VELOCITY) || defined(PREPASS_VELOCITY)\nattribute vec4 previousWorld0;\nattribute vec4 previousWorld1;\nattribute vec4 previousWorld2;\nattribute vec4 previousWorld3;\n#ifdef THIN_INSTANCES\nuniform mat4 previousWorld;\n#endif\n#endif\n#else\n#if !defined(WORLD_UBO)\nuniform mat4 world;\n#endif\n#if defined(VELOCITY) || defined(PREPASS_VELOCITY)\nuniform mat4 previousWorld;\n#endif\n#endif";
+var name$p = 'prePassVertexDeclaration';
+var shader$p = "#ifdef PREPASS\n#ifdef PREPASS_DEPTH\nvarying vec3 vViewPos;\n#endif\n#ifdef PREPASS_VELOCITY\nuniform mat4 previousViewProjection;\nvarying vec4 vCurrentPosition;\nvarying vec4 vPreviousPosition;\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$p] = shader$p;
 
-var name$o = 'prePassVertexDeclaration';
-var shader$o = "#ifdef PREPASS\n#ifdef PREPASS_DEPTH\nvarying vec3 vViewPos;\n#endif\n#ifdef PREPASS_VELOCITY\nuniform mat4 previousViewProjection;\nvarying vec4 vCurrentPosition;\nvarying vec4 vPreviousPosition;\n#endif\n#endif";
+var name$o = 'samplerVertexDeclaration';
+var shader$o = "#if defined(_DEFINENAME_) && _DEFINENAME_DIRECTUV == 0\nvarying vec2 v_VARYINGNAME_UV;\n#endif\n";
 ShaderStore.IncludesShadersStore[name$o] = shader$o;
 
-var name$n = 'samplerVertexDeclaration';
-var shader$n = "#if defined(_DEFINENAME_) && _DEFINENAME_DIRECTUV == 0\nvarying vec2 v_VARYINGNAME_UV;\n#endif\n";
+var name$n = 'bumpVertexDeclaration';
+var shader$n = "#if defined(BUMP) || defined(PARALLAX) || defined(CLEARCOAT_BUMP) || defined(ANISOTROPIC)\n#if defined(TANGENT) && defined(NORMAL)\nvarying mat3 vTBN;\n#endif\n#endif\n";
 ShaderStore.IncludesShadersStore[name$n] = shader$n;
 
-var name$m = 'bumpVertexDeclaration';
-var shader$m = "#if defined(BUMP) || defined(PARALLAX) || defined(CLEARCOAT_BUMP) || defined(ANISOTROPIC)\n#if defined(TANGENT) && defined(NORMAL)\nvarying mat3 vTBN;\n#endif\n#endif\n";
+var name$m = 'clipPlaneVertexDeclaration';
+var shader$m = "#ifdef CLIPPLANE\nuniform vec4 vClipPlane;\nvarying float fClipDistance;\n#endif\n#ifdef CLIPPLANE2\nuniform vec4 vClipPlane2;\nvarying float fClipDistance2;\n#endif\n#ifdef CLIPPLANE3\nuniform vec4 vClipPlane3;\nvarying float fClipDistance3;\n#endif\n#ifdef CLIPPLANE4\nuniform vec4 vClipPlane4;\nvarying float fClipDistance4;\n#endif\n#ifdef CLIPPLANE5\nuniform vec4 vClipPlane5;\nvarying float fClipDistance5;\n#endif\n#ifdef CLIPPLANE6\nuniform vec4 vClipPlane6;\nvarying float fClipDistance6;\n#endif";
 ShaderStore.IncludesShadersStore[name$m] = shader$m;
 
-var name$l = 'clipPlaneVertexDeclaration';
-var shader$l = "#ifdef CLIPPLANE\nuniform vec4 vClipPlane;\nvarying float fClipDistance;\n#endif\n#ifdef CLIPPLANE2\nuniform vec4 vClipPlane2;\nvarying float fClipDistance2;\n#endif\n#ifdef CLIPPLANE3\nuniform vec4 vClipPlane3;\nvarying float fClipDistance3;\n#endif\n#ifdef CLIPPLANE4\nuniform vec4 vClipPlane4;\nvarying float fClipDistance4;\n#endif\n#ifdef CLIPPLANE5\nuniform vec4 vClipPlane5;\nvarying float fClipDistance5;\n#endif\n#ifdef CLIPPLANE6\nuniform vec4 vClipPlane6;\nvarying float fClipDistance6;\n#endif";
+var name$l = 'fogVertexDeclaration';
+var shader$l = "#ifdef FOG\nvarying vec3 vFogDistance;\n#endif";
 ShaderStore.IncludesShadersStore[name$l] = shader$l;
 
-var name$k = 'fogVertexDeclaration';
-var shader$k = "#ifdef FOG\nvarying vec3 vFogDistance;\n#endif";
+var name$k = 'lightVxFragmentDeclaration';
+var shader$k = "#ifdef LIGHT{X}\nuniform vec4 vLightData{X};\nuniform vec4 vLightDiffuse{X};\n#ifdef SPECULARTERM\nuniform vec4 vLightSpecular{X};\n#else\nvec4 vLightSpecular{X}=vec4(0.);\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#elif defined(SHADOWCUBE{X})\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\nuniform mat4 lightMatrix{X};\n#endif\nuniform vec4 shadowsInfo{X};\nuniform vec2 depthValues{X};\n#endif\n#ifdef SPOTLIGHT{X}\nuniform vec4 vLightDirection{X};\nuniform vec4 vLightFalloff{X};\n#elif defined(POINTLIGHT{X})\nuniform vec4 vLightFalloff{X};\n#elif defined(HEMILIGHT{X})\nuniform vec3 vLightGround{X};\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$k] = shader$k;
 
-var name$j = 'lightVxFragmentDeclaration';
-var shader$j = "#ifdef LIGHT{X}\nuniform vec4 vLightData{X};\nuniform vec4 vLightDiffuse{X};\n#ifdef SPECULARTERM\nuniform vec4 vLightSpecular{X};\n#else\nvec4 vLightSpecular{X}=vec4(0.);\n#endif\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#elif defined(SHADOWCUBE{X})\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\nuniform mat4 lightMatrix{X};\n#endif\nuniform vec4 shadowsInfo{X};\nuniform vec2 depthValues{X};\n#endif\n#ifdef SPOTLIGHT{X}\nuniform vec4 vLightDirection{X};\nuniform vec4 vLightFalloff{X};\n#elif defined(POINTLIGHT{X})\nuniform vec4 vLightFalloff{X};\n#elif defined(HEMILIGHT{X})\nuniform vec3 vLightGround{X};\n#endif\n#endif";
+var name$j = 'lightVxUboDeclaration';
+var shader$j = "#ifdef LIGHT{X}\nuniform Light{X}\n{\nvec4 vLightData;\nvec4 vLightDiffuse;\nvec4 vLightSpecular;\n#ifdef SPOTLIGHT{X}\nvec4 vLightDirection;\nvec4 vLightFalloff;\n#elif defined(POINTLIGHT{X})\nvec4 vLightFalloff;\n#elif defined(HEMILIGHT{X})\nvec3 vLightGround;\n#endif\nvec4 shadowsInfo;\nvec2 depthValues;\n} light{X};\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#elif defined(SHADOWCUBE{X})\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\nuniform mat4 lightMatrix{X};\n#endif\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$j] = shader$j;
 
-var name$i = 'lightVxUboDeclaration';
-var shader$i = "#ifdef LIGHT{X}\nuniform Light{X}\n{\nvec4 vLightData;\nvec4 vLightDiffuse;\nvec4 vLightSpecular;\n#ifdef SPOTLIGHT{X}\nvec4 vLightDirection;\nvec4 vLightFalloff;\n#elif defined(POINTLIGHT{X})\nvec4 vLightFalloff;\n#elif defined(HEMILIGHT{X})\nvec3 vLightGround;\n#endif\nvec4 shadowsInfo;\nvec2 depthValues;\n} light{X};\n#ifdef SHADOW{X}\n#ifdef SHADOWCSM{X}\nuniform mat4 lightMatrix{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromLight{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying float vDepthMetric{X}[SHADOWCSMNUM_CASCADES{X}];\nvarying vec4 vPositionFromCamera{X};\n#elif defined(SHADOWCUBE{X})\n#else\nvarying vec4 vPositionFromLight{X};\nvarying float vDepthMetric{X};\nuniform mat4 lightMatrix{X};\n#endif\n#endif\n#endif";
+var name$i = 'morphTargetsVertexGlobalDeclaration';
+var shader$i = "#ifdef MORPHTARGETS\nuniform float morphTargetInfluences[NUM_MORPH_INFLUENCERS];\n#ifdef MORPHTARGETS_TEXTURE\nprecision mediump sampler2DArray;\nuniform float morphTargetTextureIndices[NUM_MORPH_INFLUENCERS];\nuniform vec3 morphTargetTextureInfo;\nuniform sampler2DArray morphTargets;\nvec3 readVector3FromRawSampler(int targetIndex,float vertexIndex)\n{\nfloat y=floor(vertexIndex/morphTargetTextureInfo.y);\nfloat x=vertexIndex-y*morphTargetTextureInfo.y;\nvec3 textureUV=vec3((x+0.5)/morphTargetTextureInfo.y,(y+0.5)/morphTargetTextureInfo.z,morphTargetTextureIndices[targetIndex]);\nreturn texture(morphTargets,textureUV).xyz;\n}\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$i] = shader$i;
 
-var name$h = 'morphTargetsVertexGlobalDeclaration';
-var shader$h = "#ifdef MORPHTARGETS\nuniform float morphTargetInfluences[NUM_MORPH_INFLUENCERS];\n#ifdef MORPHTARGETS_TEXTURE\nprecision mediump sampler2DArray;\nuniform float morphTargetTextureIndices[NUM_MORPH_INFLUENCERS];\nuniform vec3 morphTargetTextureInfo;\nuniform sampler2DArray morphTargets;\nvec3 readVector3FromRawSampler(int targetIndex,float vertexIndex)\n{\nfloat y=floor(vertexIndex/morphTargetTextureInfo.y);\nfloat x=vertexIndex-y*morphTargetTextureInfo.y;\nvec3 textureUV=vec3((x+0.5)/morphTargetTextureInfo.y,(y+0.5)/morphTargetTextureInfo.z,morphTargetTextureIndices[targetIndex]);\nreturn texture(morphTargets,textureUV).xyz;\n}\n#endif\n#endif";
+var name$h = 'morphTargetsVertexDeclaration';
+var shader$h = "#ifdef MORPHTARGETS\n#ifndef MORPHTARGETS_TEXTURE\nattribute vec3 position{X};\n#ifdef MORPHTARGETS_NORMAL\nattribute vec3 normal{X};\n#endif\n#ifdef MORPHTARGETS_TANGENT\nattribute vec3 tangent{X};\n#endif\n#ifdef MORPHTARGETS_UV\nattribute vec2 uv_{X};\n#endif\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$h] = shader$h;
 
-var name$g = 'morphTargetsVertexDeclaration';
-var shader$g = "#ifdef MORPHTARGETS\n#ifndef MORPHTARGETS_TEXTURE\nattribute vec3 position{X};\n#ifdef MORPHTARGETS_NORMAL\nattribute vec3 normal{X};\n#endif\n#ifdef MORPHTARGETS_TANGENT\nattribute vec3 tangent{X};\n#endif\n#ifdef MORPHTARGETS_UV\nattribute vec2 uv_{X};\n#endif\n#endif\n#endif";
+var name$g = 'morphTargetsVertexGlobal';
+var shader$g = "#ifdef MORPHTARGETS\n#ifdef MORPHTARGETS_TEXTURE\nfloat vertexID;\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$g] = shader$g;
 
-var name$f = 'morphTargetsVertexGlobal';
-var shader$f = "#ifdef MORPHTARGETS\n#ifdef MORPHTARGETS_TEXTURE\nfloat vertexID;\n#endif\n#endif";
+var name$f = 'morphTargetsVertex';
+var shader$f = "#ifdef MORPHTARGETS\n#ifdef MORPHTARGETS_TEXTURE\nvertexID=float(gl_VertexID)*morphTargetTextureInfo.x;\npositionUpdated+=(readVector3FromRawSampler({X},vertexID)-position)*morphTargetInfluences[{X}];\nvertexID+=1.0;\n#ifdef MORPHTARGETS_NORMAL\nnormalUpdated+=(readVector3FromRawSampler({X},vertexID)-normal)*morphTargetInfluences[{X}];\nvertexID+=1.0;\n#endif\n#ifdef MORPHTARGETS_UV\nuvUpdated+=(readVector3FromRawSampler({X},vertexID).xy-uv)*morphTargetInfluences[{X}];\nvertexID+=1.0;\n#endif\n#ifdef MORPHTARGETS_TANGENT\ntangentUpdated.xyz+=(readVector3FromRawSampler({X},vertexID)-tangent.xyz)*morphTargetInfluences[{X}];\n#endif\n#else\npositionUpdated+=(position{X}-position)*morphTargetInfluences[{X}];\n#ifdef MORPHTARGETS_NORMAL\nnormalUpdated+=(normal{X}-normal)*morphTargetInfluences[{X}];\n#endif\n#ifdef MORPHTARGETS_TANGENT\ntangentUpdated.xyz+=(tangent{X}-tangent.xyz)*morphTargetInfluences[{X}];\n#endif\n#ifdef MORPHTARGETS_UV\nuvUpdated+=(uv_{X}-uv)*morphTargetInfluences[{X}];\n#endif\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$f] = shader$f;
 
-var name$e = 'morphTargetsVertex';
-var shader$e = "#ifdef MORPHTARGETS\n#ifdef MORPHTARGETS_TEXTURE\nvertexID=float(gl_VertexID)*morphTargetTextureInfo.x;\npositionUpdated+=(readVector3FromRawSampler({X},vertexID)-position)*morphTargetInfluences[{X}];\nvertexID+=1.0;\n#ifdef MORPHTARGETS_NORMAL\nnormalUpdated+=(readVector3FromRawSampler({X},vertexID)-normal)*morphTargetInfluences[{X}];\nvertexID+=1.0;\n#endif\n#ifdef MORPHTARGETS_UV\nuvUpdated+=(readVector3FromRawSampler({X},vertexID).xy-uv)*morphTargetInfluences[{X}];\nvertexID+=1.0;\n#endif\n#ifdef MORPHTARGETS_TANGENT\ntangentUpdated.xyz+=(readVector3FromRawSampler({X},vertexID)-tangent.xyz)*morphTargetInfluences[{X}];\n#endif\n#else\npositionUpdated+=(position{X}-position)*morphTargetInfluences[{X}];\n#ifdef MORPHTARGETS_NORMAL\nnormalUpdated+=(normal{X}-normal)*morphTargetInfluences[{X}];\n#endif\n#ifdef MORPHTARGETS_TANGENT\ntangentUpdated.xyz+=(tangent{X}-tangent.xyz)*morphTargetInfluences[{X}];\n#endif\n#ifdef MORPHTARGETS_UV\nuvUpdated+=(uv_{X}-uv)*morphTargetInfluences[{X}];\n#endif\n#endif\n#endif";
+var name$e = 'instancesVertex';
+var shader$e = "#ifdef INSTANCES\nmat4 finalWorld=mat4(world0,world1,world2,world3);\n#if defined(PREPASS_VELOCITY) || defined(VELOCITY)\nmat4 finalPreviousWorld=mat4(previousWorld0,previousWorld1,previousWorld2,previousWorld3);\n#endif\n#ifdef THIN_INSTANCES\nfinalWorld=world*finalWorld;\n#if defined(PREPASS_VELOCITY) || defined(VELOCITY)\nfinalPreviousWorld=previousWorld*finalPreviousWorld;\n#endif\n#endif\n#else\nmat4 finalWorld=world;\n#if defined(PREPASS_VELOCITY) || defined(VELOCITY)\nmat4 finalPreviousWorld=previousWorld;\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$e] = shader$e;
 
-var name$d = 'instancesVertex';
-var shader$d = "#ifdef INSTANCES\nmat4 finalWorld=mat4(world0,world1,world2,world3);\n#if defined(PREPASS_VELOCITY) || defined(VELOCITY)\nmat4 finalPreviousWorld=mat4(previousWorld0,previousWorld1,previousWorld2,previousWorld3);\n#endif\n#ifdef THIN_INSTANCES\nfinalWorld=world*finalWorld;\n#if defined(PREPASS_VELOCITY) || defined(VELOCITY)\nfinalPreviousWorld=previousWorld*finalPreviousWorld;\n#endif\n#endif\n#else\nmat4 finalWorld=world;\n#if defined(PREPASS_VELOCITY) || defined(VELOCITY)\nmat4 finalPreviousWorld=previousWorld;\n#endif\n#endif";
+var name$d = 'bonesVertex';
+var shader$d = "#ifndef BAKED_VERTEX_ANIMATION_TEXTURE\n#if NUM_BONE_INFLUENCERS>0\nmat4 influence;\n#ifdef BONETEXTURE\ninfluence=readMatrixFromRawSampler(boneSampler,matricesIndices[0])*matricesWeights[0];\n#if NUM_BONE_INFLUENCERS>1\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndices[1])*matricesWeights[1];\n#endif\n#if NUM_BONE_INFLUENCERS>2\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndices[2])*matricesWeights[2];\n#endif\n#if NUM_BONE_INFLUENCERS>3\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndices[3])*matricesWeights[3];\n#endif\n#if NUM_BONE_INFLUENCERS>4\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[0])*matricesWeightsExtra[0];\n#endif\n#if NUM_BONE_INFLUENCERS>5\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[1])*matricesWeightsExtra[1];\n#endif\n#if NUM_BONE_INFLUENCERS>6\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[2])*matricesWeightsExtra[2];\n#endif\n#if NUM_BONE_INFLUENCERS>7\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[3])*matricesWeightsExtra[3];\n#endif\n#else\ninfluence=mBones[int(matricesIndices[0])]*matricesWeights[0];\n#if NUM_BONE_INFLUENCERS>1\ninfluence+=mBones[int(matricesIndices[1])]*matricesWeights[1];\n#endif\n#if NUM_BONE_INFLUENCERS>2\ninfluence+=mBones[int(matricesIndices[2])]*matricesWeights[2];\n#endif\n#if NUM_BONE_INFLUENCERS>3\ninfluence+=mBones[int(matricesIndices[3])]*matricesWeights[3];\n#endif\n#if NUM_BONE_INFLUENCERS>4\ninfluence+=mBones[int(matricesIndicesExtra[0])]*matricesWeightsExtra[0];\n#endif\n#if NUM_BONE_INFLUENCERS>5\ninfluence+=mBones[int(matricesIndicesExtra[1])]*matricesWeightsExtra[1];\n#endif\n#if NUM_BONE_INFLUENCERS>6\ninfluence+=mBones[int(matricesIndicesExtra[2])]*matricesWeightsExtra[2];\n#endif\n#if NUM_BONE_INFLUENCERS>7\ninfluence+=mBones[int(matricesIndicesExtra[3])]*matricesWeightsExtra[3];\n#endif\n#endif\nfinalWorld=finalWorld*influence;\n#endif\n#endif";
 ShaderStore.IncludesShadersStore[name$d] = shader$d;
 
-var name$c = 'bonesVertex';
-var shader$c = "#if NUM_BONE_INFLUENCERS>0\nmat4 influence;\n#ifdef BONETEXTURE\ninfluence=readMatrixFromRawSampler(boneSampler,matricesIndices[0])*matricesWeights[0];\n#if NUM_BONE_INFLUENCERS>1\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndices[1])*matricesWeights[1];\n#endif\n#if NUM_BONE_INFLUENCERS>2\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndices[2])*matricesWeights[2];\n#endif\n#if NUM_BONE_INFLUENCERS>3\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndices[3])*matricesWeights[3];\n#endif\n#if NUM_BONE_INFLUENCERS>4\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[0])*matricesWeightsExtra[0];\n#endif\n#if NUM_BONE_INFLUENCERS>5\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[1])*matricesWeightsExtra[1];\n#endif\n#if NUM_BONE_INFLUENCERS>6\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[2])*matricesWeightsExtra[2];\n#endif\n#if NUM_BONE_INFLUENCERS>7\ninfluence+=readMatrixFromRawSampler(boneSampler,matricesIndicesExtra[3])*matricesWeightsExtra[3];\n#endif\n#else\ninfluence=mBones[int(matricesIndices[0])]*matricesWeights[0];\n#if NUM_BONE_INFLUENCERS>1\ninfluence+=mBones[int(matricesIndices[1])]*matricesWeights[1];\n#endif\n#if NUM_BONE_INFLUENCERS>2\ninfluence+=mBones[int(matricesIndices[2])]*matricesWeights[2];\n#endif\n#if NUM_BONE_INFLUENCERS>3\ninfluence+=mBones[int(matricesIndices[3])]*matricesWeights[3];\n#endif\n#if NUM_BONE_INFLUENCERS>4\ninfluence+=mBones[int(matricesIndicesExtra[0])]*matricesWeightsExtra[0];\n#endif\n#if NUM_BONE_INFLUENCERS>5\ninfluence+=mBones[int(matricesIndicesExtra[1])]*matricesWeightsExtra[1];\n#endif\n#if NUM_BONE_INFLUENCERS>6\ninfluence+=mBones[int(matricesIndicesExtra[2])]*matricesWeightsExtra[2];\n#endif\n#if NUM_BONE_INFLUENCERS>7\ninfluence+=mBones[int(matricesIndicesExtra[3])]*matricesWeightsExtra[3];\n#endif\n#endif\nfinalWorld=finalWorld*influence;\n#endif";
+var name$c = 'bakedVertexAnimation';
+var shader$c = "#ifdef BAKED_VERTEX_ANIMATION_TEXTURE\n{\n#ifdef INSTANCES\n#define BVASNAME bakedVertexAnimationSettingsInstanced\n#else\n#define BVASNAME bakedVertexAnimationSettings\n#endif\n\nfloat VATStartFrame=BVASNAME.x;\nfloat VATEndFrame=BVASNAME.y;\nfloat VATOffsetFrame=BVASNAME.z;\nfloat VATSpeed=BVASNAME.w;\nfloat totalFrames=VATEndFrame-VATStartFrame+1.0;\nfloat time=bakedVertexAnimationTime*VATSpeed/totalFrames;\n\nfloat frameCorrection=time<1.0 ? 0.0 : 1.0;\nfloat numOfFrames=totalFrames-frameCorrection;\nfloat VATFrameNum=fract(time)*numOfFrames;\nVATFrameNum=mod(VATFrameNum+VATOffsetFrame,numOfFrames);\nVATFrameNum=floor(VATFrameNum);\nVATFrameNum+=VATStartFrame+frameCorrection;\nmat4 VATInfluence;\nVATInfluence=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndices[0],VATFrameNum)*matricesWeights[0];\n#if NUM_BONE_INFLUENCERS>1\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndices[1],VATFrameNum)*matricesWeights[1];\n#endif\n#if NUM_BONE_INFLUENCERS>2\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndices[2],VATFrameNum)*matricesWeights[2];\n#endif\n#if NUM_BONE_INFLUENCERS>3\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndices[3],VATFrameNum)*matricesWeights[3];\n#endif\n#if NUM_BONE_INFLUENCERS>4\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndicesExtra[0],VATFrameNum)*matricesWeightsExtra[0];\n#endif\n#if NUM_BONE_INFLUENCERS>5\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndicesExtra[1],VATFrameNum)*matricesWeightsExtra[1];\n#endif\n#if NUM_BONE_INFLUENCERS>6\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndicesExtra[2],VATFrameNum)*matricesWeightsExtra[2];\n#endif\n#if NUM_BONE_INFLUENCERS>7\nVATInfluence+=readMatrixFromRawSamplerVAT(bakedVertexAnimationTexture,matricesIndicesExtra[3],VATFrameNum)*matricesWeightsExtra[3];\n#endif\nfinalWorld=finalWorld*VATInfluence;\n}\n#endif";
 ShaderStore.IncludesShadersStore[name$c] = shader$c;
 
 var name$b = 'prePassVertex';
@@ -67917,7 +68486,7 @@ var shader$3 = "#ifdef LOGARITHMICDEPTH\nvFragmentDepth=1.0+gl_Position.w;\ngl_P
 ShaderStore.IncludesShadersStore[name$3] = shader$3;
 
 var name$2 = 'defaultVertexShader';
-var shader$2 = "#include<__decl__defaultVertex>\n\n#define CUSTOM_VERTEX_BEGIN\nattribute vec3 position;\n#ifdef NORMAL\nattribute vec3 normal;\n#endif\n#ifdef TANGENT\nattribute vec4 tangent;\n#endif\n#ifdef UV1\nattribute vec2 uv;\n#endif\n#include<uvAttributeDeclaration>[2..7]\n#ifdef VERTEXCOLOR\nattribute vec4 color;\n#endif\n#include<helperFunctions>\n#include<bonesDeclaration>\n\n#include<instancesDeclaration>\n#include<prePassVertexDeclaration>\n#include<mainUVVaryingDeclaration>[1..7]\n#include<samplerVertexDeclaration>(_DEFINENAME_,DIFFUSE,_VARYINGNAME_,Diffuse)\n#include<samplerVertexDeclaration>(_DEFINENAME_,DETAIL,_VARYINGNAME_,Detail)\n#include<samplerVertexDeclaration>(_DEFINENAME_,AMBIENT,_VARYINGNAME_,Ambient)\n#include<samplerVertexDeclaration>(_DEFINENAME_,OPACITY,_VARYINGNAME_,Opacity)\n#include<samplerVertexDeclaration>(_DEFINENAME_,EMISSIVE,_VARYINGNAME_,Emissive)\n#include<samplerVertexDeclaration>(_DEFINENAME_,LIGHTMAP,_VARYINGNAME_,Lightmap)\n#if defined(SPECULARTERM)\n#include<samplerVertexDeclaration>(_DEFINENAME_,SPECULAR,_VARYINGNAME_,Specular)\n#endif\n#include<samplerVertexDeclaration>(_DEFINENAME_,BUMP,_VARYINGNAME_,Bump)\n\nvarying vec3 vPositionW;\n#ifdef NORMAL\nvarying vec3 vNormalW;\n#endif\n#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#endif\n#include<bumpVertexDeclaration>\n#include<clipPlaneVertexDeclaration>\n#include<fogVertexDeclaration>\n#include<__decl__lightVxFragment>[0..maxSimultaneousLights]\n#include<morphTargetsVertexGlobalDeclaration>\n#include<morphTargetsVertexDeclaration>[0..maxSimultaneousMorphTargets]\n#ifdef REFLECTIONMAP_SKYBOX\nvarying vec3 vPositionUVW;\n#endif\n#if defined(REFLECTIONMAP_EQUIRECTANGULAR_FIXED) || defined(REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED)\nvarying vec3 vDirectionW;\n#endif\n#include<logDepthDeclaration>\n#define CUSTOM_VERTEX_DEFINITIONS\nvoid main(void) {\n#define CUSTOM_VERTEX_MAIN_BEGIN\nvec3 positionUpdated=position;\n#ifdef NORMAL\nvec3 normalUpdated=normal;\n#endif\n#ifdef TANGENT\nvec4 tangentUpdated=tangent;\n#endif\n#ifdef UV1\nvec2 uvUpdated=uv;\n#endif\n#include<morphTargetsVertexGlobal>\n#include<morphTargetsVertex>[0..maxSimultaneousMorphTargets]\n#ifdef REFLECTIONMAP_SKYBOX\nvPositionUVW=positionUpdated;\n#endif\n#define CUSTOM_VERTEX_UPDATE_POSITION\n#define CUSTOM_VERTEX_UPDATE_NORMAL\n#include<instancesVertex>\n#if defined(PREPASS) && defined(PREPASS_VELOCITY) && !defined(BONES_VELOCITY_ENABLED)\n\nvCurrentPosition=viewProjection*finalWorld*vec4(positionUpdated,1.0);\nvPreviousPosition=previousViewProjection*finalPreviousWorld*vec4(positionUpdated,1.0);\n#endif\n#include<bonesVertex>\nvec4 worldPos=finalWorld*vec4(positionUpdated,1.0);\n#ifdef NORMAL\nmat3 normalWorld=mat3(finalWorld);\n#if defined(INSTANCES) && defined(THIN_INSTANCES)\nvNormalW=normalUpdated/vec3(dot(normalWorld[0],normalWorld[0]),dot(normalWorld[1],normalWorld[1]),dot(normalWorld[2],normalWorld[2]));\nvNormalW=normalize(normalWorld*vNormalW);\n#else\n#ifdef NONUNIFORMSCALING\nnormalWorld=transposeMat3(inverseMat3(normalWorld));\n#endif\nvNormalW=normalize(normalWorld*normalUpdated);\n#endif\n#endif\n#define CUSTOM_VERTEX_UPDATE_WORLDPOS\n#ifdef MULTIVIEW\nif (gl_ViewID_OVR == 0u) {\ngl_Position=viewProjection*worldPos;\n} else {\ngl_Position=viewProjectionR*worldPos;\n}\n#else\ngl_Position=viewProjection*worldPos;\n#endif\nvPositionW=vec3(worldPos);\n#include<prePassVertex>\n#if defined(REFLECTIONMAP_EQUIRECTANGULAR_FIXED) || defined(REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED)\nvDirectionW=normalize(vec3(finalWorld*vec4(positionUpdated,0.0)));\n#endif\n\n#ifndef UV1\nvec2 uvUpdated=vec2(0.,0.);\n#endif\n#ifdef MAINUV1\nvMainUV1=uvUpdated;\n#endif\n#include<uvVariableDeclaration>[2..7]\n#include<samplerVertexImplementation>(_DEFINENAME_,DIFFUSE,_VARYINGNAME_,Diffuse,_MATRIXNAME_,diffuse,_INFONAME_,DiffuseInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,DETAIL,_VARYINGNAME_,Detail,_MATRIXNAME_,detail,_INFONAME_,DetailInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,AMBIENT,_VARYINGNAME_,Ambient,_MATRIXNAME_,ambient,_INFONAME_,AmbientInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,OPACITY,_VARYINGNAME_,Opacity,_MATRIXNAME_,opacity,_INFONAME_,OpacityInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,EMISSIVE,_VARYINGNAME_,Emissive,_MATRIXNAME_,emissive,_INFONAME_,EmissiveInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,LIGHTMAP,_VARYINGNAME_,Lightmap,_MATRIXNAME_,lightmap,_INFONAME_,LightmapInfos.x)\n#if defined(SPECULARTERM)\n#include<samplerVertexImplementation>(_DEFINENAME_,SPECULAR,_VARYINGNAME_,Specular,_MATRIXNAME_,specular,_INFONAME_,SpecularInfos.x)\n#endif\n#include<samplerVertexImplementation>(_DEFINENAME_,BUMP,_VARYINGNAME_,Bump,_MATRIXNAME_,bump,_INFONAME_,BumpInfos.x)\n#include<bumpVertex>\n#include<clipPlaneVertex>\n#include<fogVertex>\n#include<shadowsVertex>[0..maxSimultaneousLights]\n#ifdef VERTEXCOLOR\n\nvColor=color;\n#endif\n#include<pointCloudVertex>\n#include<logDepthVertex>\n#define CUSTOM_VERTEX_MAIN_END\n}\n";
+var shader$2 = "#include<__decl__defaultVertex>\n\n#define CUSTOM_VERTEX_BEGIN\nattribute vec3 position;\n#ifdef NORMAL\nattribute vec3 normal;\n#endif\n#ifdef TANGENT\nattribute vec4 tangent;\n#endif\n#ifdef UV1\nattribute vec2 uv;\n#endif\n#include<uvAttributeDeclaration>[2..7]\n#ifdef VERTEXCOLOR\nattribute vec4 color;\n#endif\n#include<helperFunctions>\n#include<bonesDeclaration>\n#include<bakedVertexAnimationDeclaration>\n\n#include<instancesDeclaration>\n#include<prePassVertexDeclaration>\n#include<mainUVVaryingDeclaration>[1..7]\n#include<samplerVertexDeclaration>(_DEFINENAME_,DIFFUSE,_VARYINGNAME_,Diffuse)\n#include<samplerVertexDeclaration>(_DEFINENAME_,DETAIL,_VARYINGNAME_,Detail)\n#include<samplerVertexDeclaration>(_DEFINENAME_,AMBIENT,_VARYINGNAME_,Ambient)\n#include<samplerVertexDeclaration>(_DEFINENAME_,OPACITY,_VARYINGNAME_,Opacity)\n#include<samplerVertexDeclaration>(_DEFINENAME_,EMISSIVE,_VARYINGNAME_,Emissive)\n#include<samplerVertexDeclaration>(_DEFINENAME_,LIGHTMAP,_VARYINGNAME_,Lightmap)\n#if defined(SPECULARTERM)\n#include<samplerVertexDeclaration>(_DEFINENAME_,SPECULAR,_VARYINGNAME_,Specular)\n#endif\n#include<samplerVertexDeclaration>(_DEFINENAME_,BUMP,_VARYINGNAME_,Bump)\n\nvarying vec3 vPositionW;\n#ifdef NORMAL\nvarying vec3 vNormalW;\n#endif\n#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#endif\n#include<bumpVertexDeclaration>\n#include<clipPlaneVertexDeclaration>\n#include<fogVertexDeclaration>\n#include<__decl__lightVxFragment>[0..maxSimultaneousLights]\n#include<morphTargetsVertexGlobalDeclaration>\n#include<morphTargetsVertexDeclaration>[0..maxSimultaneousMorphTargets]\n#ifdef REFLECTIONMAP_SKYBOX\nvarying vec3 vPositionUVW;\n#endif\n#if defined(REFLECTIONMAP_EQUIRECTANGULAR_FIXED) || defined(REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED)\nvarying vec3 vDirectionW;\n#endif\n#include<logDepthDeclaration>\n#define CUSTOM_VERTEX_DEFINITIONS\nvoid main(void) {\n#define CUSTOM_VERTEX_MAIN_BEGIN\nvec3 positionUpdated=position;\n#ifdef NORMAL\nvec3 normalUpdated=normal;\n#endif\n#ifdef TANGENT\nvec4 tangentUpdated=tangent;\n#endif\n#ifdef UV1\nvec2 uvUpdated=uv;\n#endif\n#include<morphTargetsVertexGlobal>\n#include<morphTargetsVertex>[0..maxSimultaneousMorphTargets]\n#ifdef REFLECTIONMAP_SKYBOX\nvPositionUVW=positionUpdated;\n#endif\n#define CUSTOM_VERTEX_UPDATE_POSITION\n#define CUSTOM_VERTEX_UPDATE_NORMAL\n#include<instancesVertex>\n#if defined(PREPASS) && defined(PREPASS_VELOCITY) && !defined(BONES_VELOCITY_ENABLED)\n\nvCurrentPosition=viewProjection*finalWorld*vec4(positionUpdated,1.0);\nvPreviousPosition=previousViewProjection*finalPreviousWorld*vec4(positionUpdated,1.0);\n#endif\n#include<bonesVertex>\n#include<bakedVertexAnimation>\nvec4 worldPos=finalWorld*vec4(positionUpdated,1.0);\n#ifdef NORMAL\nmat3 normalWorld=mat3(finalWorld);\n#if defined(INSTANCES) && defined(THIN_INSTANCES)\nvNormalW=normalUpdated/vec3(dot(normalWorld[0],normalWorld[0]),dot(normalWorld[1],normalWorld[1]),dot(normalWorld[2],normalWorld[2]));\nvNormalW=normalize(normalWorld*vNormalW);\n#else\n#ifdef NONUNIFORMSCALING\nnormalWorld=transposeMat3(inverseMat3(normalWorld));\n#endif\nvNormalW=normalize(normalWorld*normalUpdated);\n#endif\n#endif\n#define CUSTOM_VERTEX_UPDATE_WORLDPOS\n#ifdef MULTIVIEW\nif (gl_ViewID_OVR == 0u) {\ngl_Position=viewProjection*worldPos;\n} else {\ngl_Position=viewProjectionR*worldPos;\n}\n#else\ngl_Position=viewProjection*worldPos;\n#endif\nvPositionW=vec3(worldPos);\n#include<prePassVertex>\n#if defined(REFLECTIONMAP_EQUIRECTANGULAR_FIXED) || defined(REFLECTIONMAP_MIRROREDEQUIRECTANGULAR_FIXED)\nvDirectionW=normalize(vec3(finalWorld*vec4(positionUpdated,0.0)));\n#endif\n\n#ifndef UV1\nvec2 uvUpdated=vec2(0.,0.);\n#endif\n#ifdef MAINUV1\nvMainUV1=uvUpdated;\n#endif\n#include<uvVariableDeclaration>[2..7]\n#include<samplerVertexImplementation>(_DEFINENAME_,DIFFUSE,_VARYINGNAME_,Diffuse,_MATRIXNAME_,diffuse,_INFONAME_,DiffuseInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,DETAIL,_VARYINGNAME_,Detail,_MATRIXNAME_,detail,_INFONAME_,DetailInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,AMBIENT,_VARYINGNAME_,Ambient,_MATRIXNAME_,ambient,_INFONAME_,AmbientInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,OPACITY,_VARYINGNAME_,Opacity,_MATRIXNAME_,opacity,_INFONAME_,OpacityInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,EMISSIVE,_VARYINGNAME_,Emissive,_MATRIXNAME_,emissive,_INFONAME_,EmissiveInfos.x)\n#include<samplerVertexImplementation>(_DEFINENAME_,LIGHTMAP,_VARYINGNAME_,Lightmap,_MATRIXNAME_,lightmap,_INFONAME_,LightmapInfos.x)\n#if defined(SPECULARTERM)\n#include<samplerVertexImplementation>(_DEFINENAME_,SPECULAR,_VARYINGNAME_,Specular,_MATRIXNAME_,specular,_INFONAME_,SpecularInfos.x)\n#endif\n#include<samplerVertexImplementation>(_DEFINENAME_,BUMP,_VARYINGNAME_,Bump,_MATRIXNAME_,bump,_INFONAME_,BumpInfos.x)\n#include<bumpVertex>\n#include<clipPlaneVertex>\n#include<fogVertex>\n#include<shadowsVertex>[0..maxSimultaneousLights]\n#ifdef VERTEXCOLOR\n\nvColor=color;\n#endif\n#include<pointCloudVertex>\n#include<logDepthVertex>\n#define CUSTOM_VERTEX_MAIN_END\n}\n";
 ShaderStore.ShadersStore[name$2] = shader$2;
 
 /**
@@ -68080,6 +68649,9 @@ var DetailMapConfiguration = /** @class */ (function () {
      * @returns - boolean indicating that the submesh is ready or not.
      */
     DetailMapConfiguration.prototype.isReadyForSubMesh = function (defines, scene) {
+        if (!this._isEnabled) {
+            return true;
+        }
         var engine = scene.getEngine();
         if (defines._areTexturesDirty && scene.texturesEnabled) {
             if (engine.getCaps().standardDerivatives && this._texture && MaterialFlags.DetailTextureEnabled) {
@@ -68178,10 +68750,10 @@ var DetailMapConfiguration = /** @class */ (function () {
     };
     /**
     * Get the current class name useful for serialization or dynamic coding.
-    * @returns "DetailMap"
+    * @returns "DetailMapConfiguration"
     */
     DetailMapConfiguration.prototype.getClassName = function () {
-        return "DetailMap";
+        return "DetailMapConfiguration";
     };
     /**
      * Add the required uniforms to the current list.
@@ -68271,6 +68843,7 @@ var StandardMaterialDefines = /** @class */ (function (_super) {
         _this.DETAIL = false;
         _this.DETAILDIRECTUV = 0;
         _this.DETAIL_NORMALBLENDMETHOD = 0;
+        _this.BAKED_VERTEX_ANIMATION_TEXTURE = false;
         _this.AMBIENT = false;
         _this.AMBIENTDIRECTUV = 0;
         _this.OPACITY = false;
@@ -68362,8 +68935,8 @@ var StandardMaterialDefines = /** @class */ (function (_super) {
         _this.PREPASS = false;
         _this.PREPASS_IRRADIANCE = false;
         _this.PREPASS_IRRADIANCE_INDEX = -1;
-        _this.PREPASS_ALBEDO = false;
-        _this.PREPASS_ALBEDO_INDEX = -1;
+        _this.PREPASS_ALBEDO_SQRT = false;
+        _this.PREPASS_ALBEDO_SQRT_INDEX = -1;
         _this.PREPASS_DEPTH = false;
         _this.PREPASS_DEPTH_INDEX = -1;
         _this.PREPASS_NORMAL = false;
@@ -68391,7 +68964,10 @@ var StandardMaterialDefines = /** @class */ (function (_super) {
         _this.SAMPLER3DGREENDEPTH = false;
         _this.SAMPLER3DBGRMAP = false;
         _this.IMAGEPROCESSINGPOSTPROCESS = false;
+        _this.SKIPFINALCOLORCLAMP = false;
         _this.MULTIVIEW = false;
+        _this.ORDER_INDEPENDENT_TRANSPARENCY = false;
+        _this.ORDER_INDEPENDENT_TRANSPARENCY_16BITS = false;
         /**
          * If the reflection texture on this material is in linear color space
          * @hidden
@@ -68513,6 +69089,7 @@ var StandardMaterial = /** @class */ (function (_super) {
         _this._renderTargets = new SmartArray(16);
         _this._worldViewProjectionMatrix = Matrix.Zero();
         _this._globalAmbientColor = new Color3(0, 0, 0);
+        _this.buildUniformLayout();
         // Setup the default processing configuration to the scene.
         _this._attachImageProcessingConfiguration(null);
         _this.prePassConfiguration = new PrePassConfiguration();
@@ -68811,11 +69388,11 @@ var StandardMaterial = /** @class */ (function (_super) {
                 return true;
             }
         }
-        if (!subMesh._materialDefines) {
+        if (!subMesh.materialDefines) {
             subMesh.materialDefines = new StandardMaterialDefines();
         }
         var scene = this.getScene();
-        var defines = subMesh._materialDefines;
+        var defines = subMesh.materialDefines;
         if (this._isReadyForSubMesh(subMesh)) {
             return true;
         }
@@ -68825,7 +69402,10 @@ var StandardMaterial = /** @class */ (function (_super) {
         // Multiview
         MaterialHelper.PrepareDefinesForMultiview(scene, defines);
         // PrePass
-        MaterialHelper.PrepareDefinesForPrePass(scene, defines, this.canRenderToMRT);
+        var oit = this.needAlphaBlendingForMesh(mesh) && this.getScene().useOrderIndependentTransparency;
+        MaterialHelper.PrepareDefinesForPrePass(scene, defines, this.canRenderToMRT && !oit);
+        // Order independant transparency
+        MaterialHelper.PrepareDefinesForOIT(scene, defines, oit);
         // Textures
         if (defines._areTexturesDirty) {
             defines._needUVs = false;
@@ -69117,6 +69697,7 @@ var StandardMaterial = /** @class */ (function (_super) {
             MaterialHelper.PrepareAttributesForBones(attribs, mesh, defines, fallbacks);
             MaterialHelper.PrepareAttributesForInstances(attribs, defines);
             MaterialHelper.PrepareAttributesForMorphTargets(attribs, mesh, defines);
+            MaterialHelper.PrepareAttributesForBakedVertexAnimation(attribs, mesh, defines);
             var shaderName = "default";
             var uniforms = ["world", "view", "viewProjection", "vEyePosition", "vLightsType", "vAmbientColor", "vDiffuseColor", "vSpecularColor", "vEmissiveColor", "visibility",
                 "vFogInfos", "vFogColor", "pointSize",
@@ -69130,7 +69711,8 @@ var StandardMaterial = /** @class */ (function (_super) {
             ];
             var samplers = ["diffuseSampler", "ambientSampler", "opacitySampler", "reflectionCubeSampler",
                 "reflection2DSampler", "emissiveSampler", "specularSampler", "bumpSampler", "lightmapSampler",
-                "refractionCubeSampler", "refraction2DSampler", "boneSampler", "morphTargets"];
+                "refractionCubeSampler", "refraction2DSampler", "boneSampler", "morphTargets", "oitDepthSampler",
+                "oitFrontColorSampler"];
             var uniformBuffers = ["Material", "Scene", "Mesh"];
             DetailMapConfiguration.AddUniforms(uniforms);
             DetailMapConfiguration.AddSamplers(samplers);
@@ -69185,7 +69767,6 @@ var StandardMaterial = /** @class */ (function (_super) {
                 else {
                     scene.resetCachedMaterial();
                     subMesh.setEffect(effect, defines, this._materialContext);
-                    this.buildUniformLayout();
                 }
             }
         }
@@ -69248,7 +69829,7 @@ var StandardMaterial = /** @class */ (function (_super) {
      * Unbinds the material from the mesh
      */
     StandardMaterial.prototype.unbind = function () {
-        if (this._activeEffect) {
+        if (this._activeEffect && !this.getScene().getEngine()._features.needToAlwaysBindUniformBuffers) {
             var needFlag = false;
             if (this._reflectionTexture && this._reflectionTexture.isRenderTarget) {
                 this._activeEffect.setTexture("reflection2DSampler", null);
@@ -69271,8 +69852,9 @@ var StandardMaterial = /** @class */ (function (_super) {
      * @param subMesh defines the submesh to bind the material to
      */
     StandardMaterial.prototype.bindForSubMesh = function (world, mesh, subMesh) {
+        var _a;
         var scene = this.getScene();
-        var defines = subMesh._materialDefines;
+        var defines = subMesh.materialDefines;
         if (!defines) {
             return;
         }
@@ -69438,11 +70020,19 @@ var StandardMaterial = /** @class */ (function (_super) {
                     }
                 }
             }
+            // OIT with depth peeling
+            if (this.getScene().useOrderIndependentTransparency && this.needAlphaBlendingForMesh(mesh)) {
+                this.getScene().depthPeelingRenderer.bind(effect);
+            }
             this.detailMap.bindForSubMesh(ubo, scene, this.isFrozen);
             // Clip plane
             MaterialHelper.BindClipPlane(effect, scene);
             // Colors
             this.bindEyePosition(effect);
+        }
+        else if (scene.getEngine()._features.needToAlwaysBindUniformBuffers) {
+            ubo.bindToEffect(effect, "Material");
+            this._needToBindSceneUbo = true;
         }
         if (mustRebind || !this.isFrozen) {
             // Lights
@@ -69458,6 +70048,9 @@ var StandardMaterial = /** @class */ (function (_super) {
             // Morph targets
             if (defines.NUM_MORPH_INFLUENCERS) {
                 MaterialHelper.BindMorphTargetParameters(mesh, effect);
+            }
+            if (defines.BAKED_VERTEX_ANIMATION_TEXTURE) {
+                (_a = mesh.bakedVertexAnimationManager) === null || _a === void 0 ? void 0 : _a.bind(effect, defines.INSTANCES);
             }
             // Log. depth
             if (this.useLogarithmicDepth) {
@@ -69579,7 +70172,10 @@ var StandardMaterial = /** @class */ (function (_super) {
         if (this._refractionTexture === texture) {
             return true;
         }
-        return this.detailMap.hasTexture(texture);
+        if (this.detailMap.hasTexture(texture)) {
+            return true;
+        }
+        return false;
     };
     /**
      * Disposes the material
@@ -70016,96 +70612,10 @@ var StandardMaterial = /** @class */ (function (_super) {
     ], StandardMaterial.prototype, "useLogarithmicDepth", null);
     return StandardMaterial;
 }(PushMaterial));
-_TypeStore.RegisteredTypes["BABYLON.StandardMaterial"] = StandardMaterial;
+RegisterClass("BABYLON.StandardMaterial", StandardMaterial);
 Scene.DefaultMaterialFactory = function (scene) {
     return new StandardMaterial("default material", scene);
 };
-
-VertexData.CreatePlane = function (options) {
-    var indices = [];
-    var positions = [];
-    var normals = [];
-    var uvs = [];
-    var width = options.width || options.size || 1;
-    var height = options.height || options.size || 1;
-    var sideOrientation = (options.sideOrientation === 0) ? 0 : options.sideOrientation || VertexData.DEFAULTSIDE;
-    // Vertices
-    var halfWidth = width / 2.0;
-    var halfHeight = height / 2.0;
-    positions.push(-halfWidth, -halfHeight, 0);
-    normals.push(0, 0, -1.0);
-    uvs.push(0.0, 0.0);
-    positions.push(halfWidth, -halfHeight, 0);
-    normals.push(0, 0, -1.0);
-    uvs.push(1.0, 0.0);
-    positions.push(halfWidth, halfHeight, 0);
-    normals.push(0, 0, -1.0);
-    uvs.push(1.0, 1.0);
-    positions.push(-halfWidth, halfHeight, 0);
-    normals.push(0, 0, -1.0);
-    uvs.push(0.0, 1.0);
-    // Indices
-    indices.push(0);
-    indices.push(1);
-    indices.push(2);
-    indices.push(0);
-    indices.push(2);
-    indices.push(3);
-    // Sides
-    VertexData._ComputeSides(sideOrientation, positions, indices, normals, uvs, options.frontUVs, options.backUVs);
-    // Result
-    var vertexData = new VertexData();
-    vertexData.indices = indices;
-    vertexData.positions = positions;
-    vertexData.normals = normals;
-    vertexData.uvs = uvs;
-    return vertexData;
-};
-Mesh.CreatePlane = function (name, size, scene, updatable, sideOrientation) {
-    var options = {
-        size: size,
-        width: size,
-        height: size,
-        sideOrientation: sideOrientation,
-        updatable: updatable
-    };
-    return PlaneBuilder.CreatePlane(name, options, scene);
-};
-/**
- * Class containing static functions to help procedurally build meshes
- */
-var PlaneBuilder = /** @class */ (function () {
-    function PlaneBuilder() {
-    }
-    /**
-     * Creates a plane mesh
-     * * The parameter `size` sets the size (float) of both sides of the plane at once (default 1)
-     * * You can set some different plane dimensions by using the parameters `width` and `height` (both by default have the same value of `size`)
-     * * The parameter `sourcePlane` is a Plane instance. It builds a mesh plane from a Math plane
-     * * You can also set the mesh side orientation with the values : BABYLON.Mesh.FRONTSIDE (default), BABYLON.Mesh.BACKSIDE or BABYLON.Mesh.DOUBLESIDE
-     * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @param name defines the name of the mesh
-     * @param options defines the options used to create the mesh
-     * @param scene defines the hosting scene
-     * @returns the plane mesh
-     * @see https://doc.babylonjs.com/how_to/set_shapes#plane
-     */
-    PlaneBuilder.CreatePlane = function (name, options, scene) {
-        if (scene === void 0) { scene = null; }
-        var plane = new Mesh(name, scene);
-        options.sideOrientation = Mesh._GetDefaultSideOrientation(options.sideOrientation);
-        plane._originalBuilderSideOrientation = options.sideOrientation;
-        var vertexData = VertexData.CreatePlane(options);
-        vertexData.applyToMesh(plane, options.updatable);
-        if (options.sourcePlane) {
-            plane.translate(options.sourcePlane.normal, -options.sourcePlane.d);
-            plane.setDirection(options.sourcePlane.normal.scale(-1));
-        }
-        return plane;
-    };
-    return PlaneBuilder;
-}());
 
 var onCreatedEffectParameters = { effect: null, subMesh: null };
 /**
@@ -70130,10 +70640,12 @@ var ShaderMaterial = /** @class */ (function (_super) {
      *  * object: { vertexSource: "vertex shader code string", fragmentSource: "fragment shader code string" } using with strings containing the shaders code
      *  * string: "./COMMON_NAME", used with external files COMMON_NAME.vertex.fx and COMMON_NAME.fragment.fx in index.html folder.
      * @param options Define the options used to create the shader
+     * @param storeEffectOnSubMeshes true to store effect on submeshes, false to store the effect directly in the material class.
      */
-    function ShaderMaterial(name, scene, shaderPath, options) {
+    function ShaderMaterial(name, scene, shaderPath, options, storeEffectOnSubMeshes) {
         if (options === void 0) { options = {}; }
-        var _this = _super.call(this, name, scene) || this;
+        if (storeEffectOnSubMeshes === void 0) { storeEffectOnSubMeshes = true; }
+        var _this = _super.call(this, name, scene, storeEffectOnSubMeshes) || this;
         _this._textures = {};
         _this._textureArrays = {};
         _this._externalTextures = {};
@@ -70497,16 +71009,6 @@ var ShaderMaterial = /** @class */ (function (_super) {
         this._storageBuffers[name] = buffer;
         return this;
     };
-    ShaderMaterial.prototype._checkCache = function (mesh, useInstances) {
-        if (!mesh) {
-            return true;
-        }
-        var effect = this.getEffect();
-        if (effect && (effect.defines.indexOf("#define INSTANCES") !== -1) !== useInstances) {
-            return false;
-        }
-        return true;
-    };
     /**
      * Specifies that the submesh is ready to be used
      * @param mesh defines the mesh to check
@@ -70525,22 +71027,23 @@ var ShaderMaterial = /** @class */ (function (_super) {
      * @returns true if ready, otherwise false
      */
     ShaderMaterial.prototype.isReady = function (mesh, useInstances, subMesh) {
-        var _a, _b;
-        var effect = this.getEffect();
-        if (effect && this.isFrozen) {
-            if (effect._wasPreviouslyReady) {
-                return true;
+        var _a, _b, _c, _d;
+        var storeEffectOnSubMeshes = subMesh && this._storeEffectOnSubMeshes;
+        if (this.isFrozen) {
+            if (storeEffectOnSubMeshes) {
+                if (subMesh.effect && subMesh.effect._wasPreviouslyReady) {
+                    return true;
+                }
             }
-        }
-        var scene = this.getScene();
-        var engine = scene.getEngine();
-        if (!this.checkReadyOnEveryCall) {
-            if (this._renderId === scene.getRenderId()) {
-                if (this._checkCache(mesh, useInstances)) {
+            else {
+                var effect_1 = this._drawWrapper.effect;
+                if (effect_1 && effect_1._wasPreviouslyReady && this._effectUsesInstances === useInstances) {
                     return true;
                 }
             }
         }
+        var scene = this.getScene();
+        var engine = scene.getEngine();
         // Instances
         var defines = [];
         var attribs = [];
@@ -70660,6 +71163,26 @@ var ShaderMaterial = /** @class */ (function (_super) {
         else {
             defines.push("#define NUM_MORPH_INFLUENCERS 0");
         }
+        // Baked Vertex Animation
+        if (mesh) {
+            var bvaManager = mesh.bakedVertexAnimationManager;
+            if (bvaManager && bvaManager.isEnabled) {
+                defines.push("#define BAKED_VERTEX_ANIMATION_TEXTURE");
+                if (this._options.uniforms.indexOf("bakedVertexAnimationSettings") === -1) {
+                    this._options.uniforms.push("bakedVertexAnimationSettings");
+                }
+                if (this._options.uniforms.indexOf("bakedVertexAnimationTextureSizeInverted") === -1) {
+                    this._options.uniforms.push("bakedVertexAnimationTextureSizeInverted");
+                }
+                if (this._options.uniforms.indexOf("bakedVertexAnimationTime") === -1) {
+                    this._options.uniforms.push("bakedVertexAnimationTime");
+                }
+                if (this._options.samplers.indexOf("bakedVertexAnimationTexture") === -1) {
+                    this._options.samplers.push("bakedVertexAnimationTexture");
+                }
+            }
+            MaterialHelper.PrepareAttributesForBakedVertexAnimation(attribs, mesh, defines);
+        }
         // Textures
         for (var name in this._textures) {
             if (!this._textures[name].isReady()) {
@@ -70713,10 +71236,12 @@ var ShaderMaterial = /** @class */ (function (_super) {
             samplers = samplers.slice();
             shaderName = this.customShaderNameResolve(shaderName, uniforms, uniformBuffers, samplers, defines, attribs);
         }
-        var previousEffect = effect;
+        var drawWrapper = storeEffectOnSubMeshes ? subMesh._getDrawWrapper() : this._drawWrapper;
+        var previousEffect = (_a = drawWrapper === null || drawWrapper === void 0 ? void 0 : drawWrapper.effect) !== null && _a !== void 0 ? _a : null;
+        var previousDefines = (_b = drawWrapper === null || drawWrapper === void 0 ? void 0 : drawWrapper.defines) !== null && _b !== void 0 ? _b : null;
         var join = defines.join("\n");
-        if (this._cachedDefines !== join) {
-            this._cachedDefines = join;
+        var effect = previousEffect;
+        if (previousDefines !== join) {
             effect = engine.createEffect(shaderName, {
                 attributes: attribs,
                 uniformsNames: uniforms,
@@ -70729,20 +71254,25 @@ var ShaderMaterial = /** @class */ (function (_super) {
                 indexParameters: { maxSimultaneousMorphTargets: numInfluencers },
                 shaderLanguage: this._options.shaderLanguage
             }, engine);
-            this._drawWrapper.effect = effect;
+            if (storeEffectOnSubMeshes) {
+                subMesh.setEffect(effect, join, this._materialContext);
+            }
+            else if (drawWrapper) {
+                drawWrapper.setEffect(effect, join);
+            }
             if (this._onEffectCreatedObservable) {
                 onCreatedEffectParameters.effect = effect;
-                onCreatedEffectParameters.subMesh = (_a = subMesh !== null && subMesh !== void 0 ? subMesh : mesh === null || mesh === void 0 ? void 0 : mesh.subMeshes[0]) !== null && _a !== void 0 ? _a : null;
+                onCreatedEffectParameters.subMesh = (_c = subMesh !== null && subMesh !== void 0 ? subMesh : mesh === null || mesh === void 0 ? void 0 : mesh.subMeshes[0]) !== null && _c !== void 0 ? _c : null;
                 this._onEffectCreatedObservable.notifyObservers(onCreatedEffectParameters);
             }
         }
-        if ((_b = !(effect === null || effect === void 0 ? void 0 : effect.isReady())) !== null && _b !== void 0 ? _b : true) {
+        this._effectUsesInstances = !!useInstances;
+        if ((_d = !(effect === null || effect === void 0 ? void 0 : effect.isReady())) !== null && _d !== void 0 ? _d : true) {
             return false;
         }
         if (previousEffect !== effect) {
             scene.resetCachedMaterial();
         }
-        this._renderId = scene.getRenderId();
         effect._wasPreviouslyReady = true;
         return true;
     };
@@ -70777,18 +71307,25 @@ var ShaderMaterial = /** @class */ (function (_super) {
      */
     ShaderMaterial.prototype.bindForSubMesh = function (world, mesh, subMesh) {
         var _a;
-        this.bind(world, mesh, (_a = subMesh._drawWrapperOverride) === null || _a === void 0 ? void 0 : _a.effect);
+        this.bind(world, mesh, (_a = subMesh._drawWrapperOverride) === null || _a === void 0 ? void 0 : _a.effect, subMesh);
     };
     /**
      * Binds the material to the mesh
      * @param world defines the world transformation matrix
      * @param mesh defines the mesh to bind the material to
      * @param effectOverride - If provided, use this effect instead of internal effect
+     * @param subMesh defines the submesh to bind the material to
      */
-    ShaderMaterial.prototype.bind = function (world, mesh, effectOverride) {
+    ShaderMaterial.prototype.bind = function (world, mesh, effectOverride, subMesh) {
+        var _a;
         // Std values
+        var storeEffectOnSubMeshes = subMesh && this._storeEffectOnSubMeshes;
+        var effect = effectOverride !== null && effectOverride !== void 0 ? effectOverride : (storeEffectOnSubMeshes ? subMesh.effect : this.getEffect());
+        if (!effect) {
+            return;
+        }
+        this._activeEffect = effect;
         this.bindOnlyWorldMatrix(world, effectOverride);
-        var effect = effectOverride !== null && effectOverride !== void 0 ? effectOverride : this.getEffect();
         var uniformBuffers = this._options.uniformBuffers;
         var useSceneUBO = false;
         if (effect && uniformBuffers && uniformBuffers.length > 0 && this.getScene().getEngine().supportsUniformBuffers) {
@@ -70802,14 +71339,14 @@ var ShaderMaterial = /** @class */ (function (_super) {
                         }
                         break;
                     case "Scene":
-                        this.getScene().finalizeSceneUbo();
                         MaterialHelper.BindSceneUniformBuffer(effect, this.getScene().getSceneUniformBuffer());
+                        this.getScene().finalizeSceneUbo();
                         useSceneUBO = true;
                         break;
                 }
             }
         }
-        var mustRebind = this.getScene().getCachedMaterial() !== this;
+        var mustRebind = mesh && storeEffectOnSubMeshes ? this._mustRebind(this.getScene(), effect, mesh.visibility) : this.getScene().getCachedMaterial() !== this;
         if (effect && mustRebind) {
             if (!useSceneUBO && this._options.uniforms.indexOf("view") !== -1) {
                 effect.setMatrix("view", this.getScene().getViewMatrix());
@@ -70934,16 +71471,12 @@ var ShaderMaterial = /** @class */ (function (_super) {
             if (manager && manager.numInfluencers > 0) {
                 MaterialHelper.BindMorphTargetParameters(mesh, effect);
             }
+            var bvaManager = mesh.bakedVertexAnimationManager;
+            if (bvaManager && bvaManager.isEnabled) {
+                (_a = mesh.bakedVertexAnimationManager) === null || _a === void 0 ? void 0 : _a.bind(effect, this._effectUsesInstances);
+            }
         }
-        var seffect = this.getEffect();
-        this._drawWrapper.effect = effect; // make sure the active effect is the right one if there are some observers for onBind that would need to get the current effect
         this._afterBind(mesh, effect);
-        this._drawWrapper.effect = seffect;
-    };
-    ShaderMaterial.prototype._afterBind = function (mesh, effect) {
-        if (effect === void 0) { effect = null; }
-        _super.prototype._afterBind.call(this, mesh, effect);
-        this.getScene()._cachedEffect = effect;
     };
     /**
      * Gets the active textures from the material
@@ -70993,7 +71526,7 @@ var ShaderMaterial = /** @class */ (function (_super) {
      */
     ShaderMaterial.prototype.clone = function (name) {
         var _this = this;
-        var result = SerializationHelper.Clone(function () { return new ShaderMaterial(name, _this.getScene(), _this._shaderPath, _this._options); }, this);
+        var result = SerializationHelper.Clone(function () { return new ShaderMaterial(name, _this.getScene(), _this._shaderPath, _this._options, _this._storeEffectOnSubMeshes); }, this);
         result.name = name;
         result.id = name;
         // Shader code path
@@ -71135,6 +71668,7 @@ var ShaderMaterial = /** @class */ (function (_super) {
         serializationObject.customType = "BABYLON.ShaderMaterial";
         serializationObject.options = this._options;
         serializationObject.shaderPath = this._shaderPath;
+        serializationObject.storeEffectOnSubMeshes = this._storeEffectOnSubMeshes;
         var name;
         // Stencil
         serializationObject.stencil = this.stencil.serialize();
@@ -71247,7 +71781,7 @@ var ShaderMaterial = /** @class */ (function (_super) {
      * @returns a new material
      */
     ShaderMaterial.Parse = function (source, scene, rootUrl) {
-        var material = SerializationHelper.Parse(function () { return new ShaderMaterial(source.name, scene, source.shaderPath, source.options); }, source, scene, rootUrl);
+        var material = SerializationHelper.Parse(function () { return new ShaderMaterial(source.name, scene, source.shaderPath, source.options, source.storeEffectOnSubMeshes); }, source, scene, rootUrl);
         var name;
         // Stencil
         if (source.stencil) {
@@ -71419,15 +71953,15 @@ var ShaderMaterial = /** @class */ (function (_super) {
     /** Define the Url to load snippets */
     ShaderMaterial.SnippetUrl = "https://snippet.babylonjs.com";
     return ShaderMaterial;
-}(Material));
-_TypeStore.RegisteredTypes["BABYLON.ShaderMaterial"] = ShaderMaterial;
+}(PushMaterial));
+RegisterClass("BABYLON.ShaderMaterial", ShaderMaterial);
 
 var name$1 = 'colorPixelShader';
 var shader$1 = "#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#else\nuniform vec4 color;\n#endif\n#include<clipPlaneFragmentDeclaration>\nvoid main(void) {\n#include<clipPlaneFragment>\n#ifdef VERTEXCOLOR\ngl_FragColor=vColor;\n#else\ngl_FragColor=color;\n#endif\n}";
 ShaderStore.ShadersStore[name$1] = shader$1;
 
 var name = 'colorVertexShader';
-var shader = "\nattribute vec3 position;\n#ifdef VERTEXCOLOR\nattribute vec4 color;\n#endif\n#include<bonesDeclaration>\n#include<clipPlaneVertexDeclaration>\n\n#include<instancesDeclaration>\nuniform mat4 viewProjection;\n#ifdef MULTIVIEW\nuniform mat4 viewProjectionR;\n#endif\n\n#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#endif\nvoid main(void) {\n#include<instancesVertex>\n#include<bonesVertex>\nvec4 worldPos=finalWorld*vec4(position,1.0);\n#ifdef MULTIVIEW\nif (gl_ViewID_OVR == 0u) {\ngl_Position=viewProjection*worldPos;\n} else {\ngl_Position=viewProjectionR*worldPos;\n}\n#else\ngl_Position=viewProjection*worldPos;\n#endif\n#include<clipPlaneVertex>\n#ifdef VERTEXCOLOR\n\nvColor=color;\n#endif\n}";
+var shader = "\nattribute vec3 position;\n#ifdef VERTEXCOLOR\nattribute vec4 color;\n#endif\n#include<bonesDeclaration>\n#include<bakedVertexAnimationDeclaration>\n#include<clipPlaneVertexDeclaration>\n\n#include<instancesDeclaration>\nuniform mat4 viewProjection;\n#ifdef MULTIVIEW\nuniform mat4 viewProjectionR;\n#endif\n\n#ifdef VERTEXCOLOR\nvarying vec4 vColor;\n#endif\nvoid main(void) {\n#include<instancesVertex>\n#include<bonesVertex>\n#include<bakedVertexAnimation>\nvec4 worldPos=finalWorld*vec4(position,1.0);\n#ifdef MULTIVIEW\nif (gl_ViewID_OVR == 0u) {\ngl_Position=viewProjection*worldPos;\n} else {\ngl_Position=viewProjectionR*worldPos;\n}\n#else\ngl_Position=viewProjection*worldPos;\n#endif\n#include<clipPlaneVertex>\n#ifdef VERTEXCOLOR\n\nvColor=color;\n#endif\n}";
 ShaderStore.ShadersStore[name] = shader;
 
 Mesh._LinesMeshParser = function (parsedMesh, scene) {
@@ -71487,7 +72021,8 @@ var LinesMesh = /** @class */ (function (_super) {
             attributes: [VertexBuffer.PositionKind],
             uniforms: ["vClipPlane", "vClipPlane2", "vClipPlane3", "vClipPlane4", "vClipPlane5", "vClipPlane6", "world", "viewProjection"],
             needAlphaBlending: true,
-            defines: defines
+            defines: defines,
+            useClipPlane: null,
         };
         if (useVertexAlpha === false) {
             options.needAlphaBlending = false;
@@ -71504,45 +72039,15 @@ var LinesMesh = /** @class */ (function (_super) {
             _this.material = material;
         }
         else {
-            _this._lineMaterial = new ShaderMaterial("colorShader", _this.getScene(), "color", options);
+            _this._lineMaterial = new ShaderMaterial("colorShader", _this.getScene(), "color", options, false);
         }
         return _this;
     }
     LinesMesh.prototype._isShaderMaterial = function (shader) {
         return shader.getClassName() === "ShaderMaterial";
     };
-    LinesMesh.prototype._addClipPlaneDefine = function (label) {
-        if (!this._isShaderMaterial(this._lineMaterial)) {
-            return;
-        }
-        var define = "#define " + label;
-        var index = this._lineMaterial.options.defines.indexOf(define);
-        if (index !== -1) {
-            return;
-        }
-        this._lineMaterial.options.defines.push(define);
-    };
-    LinesMesh.prototype._removeClipPlaneDefine = function (label) {
-        if (!this._isShaderMaterial(this._lineMaterial)) {
-            return;
-        }
-        var define = "#define " + label;
-        var index = this._lineMaterial.options.defines.indexOf(define);
-        if (index === -1) {
-            return;
-        }
-        this._lineMaterial.options.defines.splice(index, 1);
-    };
     LinesMesh.prototype.isReady = function () {
-        var scene = this.getScene();
-        // Clip planes
-        scene.clipPlane ? this._addClipPlaneDefine("CLIPPLANE") : this._removeClipPlaneDefine("CLIPPLANE");
-        scene.clipPlane2 ? this._addClipPlaneDefine("CLIPPLANE2") : this._removeClipPlaneDefine("CLIPPLANE2");
-        scene.clipPlane3 ? this._addClipPlaneDefine("CLIPPLANE3") : this._removeClipPlaneDefine("CLIPPLANE3");
-        scene.clipPlane4 ? this._addClipPlaneDefine("CLIPPLANE4") : this._removeClipPlaneDefine("CLIPPLANE4");
-        scene.clipPlane5 ? this._addClipPlaneDefine("CLIPPLANE5") : this._removeClipPlaneDefine("CLIPPLANE5");
-        scene.clipPlane6 ? this._addClipPlaneDefine("CLIPPLANE6") : this._removeClipPlaneDefine("CLIPPLANE6");
-        if (!this._lineMaterial.isReady(this)) {
+        if (!this._lineMaterial.isReady(this, !!this._userInstancedBuffersStorage)) {
             return false;
         }
         return _super.prototype.isReady.call(this);
@@ -71602,8 +72107,6 @@ var LinesMesh = /** @class */ (function (_super) {
             this.color4.set(r, g, b, this.alpha);
             this._lineMaterial.setColor4("color", this.color4);
         }
-        // Clip planes
-        MaterialHelper.BindClipPlane(colorEffect, this.getScene());
         return this;
     };
     /** @hidden */
@@ -71694,7 +72197,14 @@ var InstancedLinesMesh = /** @class */ (function (_super) {
     return InstancedLinesMesh;
 }(InstancedMesh));
 
-VertexData.CreateLineSystem = function (options) {
+/**
+ * Creates the VertexData of the LineSystem
+ * @param options an object used to set the following optional parameters for the LineSystem, required but can be empty
+ *  - lines an array of lines, each line being an array of successive Vector3
+ *  - colors an array of line colors, each of the line colors being an array of successive Color4, one per line point
+ * @returns the VertexData of the LineSystem
+ */
+function CreateLineSystemVertexData(options) {
     var indices = [];
     var positions = [];
     var lines = options.lines;
@@ -71723,8 +72233,17 @@ VertexData.CreateLineSystem = function (options) {
         vertexData.colors = vertexColors;
     }
     return vertexData;
-};
-VertexData.CreateDashedLines = function (options) {
+}
+/**
+ * Create the VertexData for a DashedLines
+ * @param options an object used to set the following optional parameters for the DashedLines, required but can be empty
+ *  - points an array successive Vector3
+ *  - dashSize the size of the dashes relative to the dash number, optional, default 3
+ *  - gapSize the size of the gap between two successive dashes relative to the dash number, optional, default 1
+ *  - dashNb the intended total number of dashes, optional, default 200
+ * @returns the VertexData for the DashedLines
+ */
+function CreateDashedLinesVertexData(options) {
     var dashSize = options.dashSize || 3;
     var gapSize = options.gapSize || 1;
     var dashNb = options.dashNb || 200;
@@ -71762,7 +72281,174 @@ VertexData.CreateDashedLines = function (options) {
     vertexData.positions = positions;
     vertexData.indices = indices;
     return vertexData;
-};
+}
+/**
+ * Creates a line system mesh. A line system is a pool of many lines gathered in a single mesh
+ * * A line system mesh is considered as a parametric shape since it has no predefined original shape. Its shape is determined by the passed array of lines as an input parameter
+ * * Like every other parametric shape, it is dynamically updatable by passing an existing instance of LineSystem to this static function
+ * * The parameter `lines` is an array of lines, each line being an array of successive Vector3
+ * * The optional parameter `instance` is an instance of an existing LineSystem object to be updated with the passed `lines` parameter
+ * * The optional parameter `colors` is an array of line colors, each line colors being an array of successive Color4, one per line point
+ * * The optional parameter `useVertexAlpha` is to be set to `false` (default `true`) when you don't need the alpha blending (faster)
+ * * The optional parameter `material` is the material to use to draw the lines if provided. If not, a default material will be created
+ * * Updating a simple Line mesh, you just need to update every line in the `lines` array : https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#lines-and-dashedlines
+ * * When updating an instance, remember that only line point positions can change, not the number of points, neither the number of lines
+ * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+ * @see https://doc.babylonjs.com/how_to/parametric_shapes#line-system
+ * @param name defines the name of the new line system
+ * @param options defines the options used to create the line system
+ * @param scene defines the hosting scene
+ * @returns a new line system mesh
+ */
+function CreateLineSystem(name, options, scene) {
+    var instance = options.instance;
+    var lines = options.lines;
+    var colors = options.colors;
+    if (instance) { // lines update
+        var positions = instance.getVerticesData(VertexBuffer.PositionKind);
+        var vertexColor;
+        var lineColors;
+        if (colors) {
+            vertexColor = instance.getVerticesData(VertexBuffer.ColorKind);
+        }
+        var i = 0;
+        var c = 0;
+        for (var l = 0; l < lines.length; l++) {
+            var points = lines[l];
+            for (var p = 0; p < points.length; p++) {
+                positions[i] = points[p].x;
+                positions[i + 1] = points[p].y;
+                positions[i + 2] = points[p].z;
+                if (colors && vertexColor) {
+                    lineColors = colors[l];
+                    vertexColor[c] = lineColors[p].r;
+                    vertexColor[c + 1] = lineColors[p].g;
+                    vertexColor[c + 2] = lineColors[p].b;
+                    vertexColor[c + 3] = lineColors[p].a;
+                    c += 4;
+                }
+                i += 3;
+            }
+        }
+        instance.updateVerticesData(VertexBuffer.PositionKind, positions, false, false);
+        if (colors && vertexColor) {
+            instance.updateVerticesData(VertexBuffer.ColorKind, vertexColor, false, false);
+        }
+        return instance;
+    }
+    // line system creation
+    var useVertexColor = (colors) ? true : false;
+    var lineSystem = new LinesMesh(name, scene, null, undefined, undefined, useVertexColor, options.useVertexAlpha, options.material);
+    var vertexData = CreateLineSystemVertexData(options);
+    vertexData.applyToMesh(lineSystem, options.updatable);
+    return lineSystem;
+}
+/**
+ * Creates a line mesh
+ * A line mesh is considered as a parametric shape since it has no predefined original shape. Its shape is determined by the passed array of points as an input parameter
+ * * Like every other parametric shape, it is dynamically updatable by passing an existing instance of LineMesh to this static function
+ * * The parameter `points` is an array successive Vector3
+ * * The optional parameter `instance` is an instance of an existing LineMesh object to be updated with the passed `points` parameter : https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#lines-and-dashedlines
+ * * The optional parameter `colors` is an array of successive Color4, one per line point
+ * * The optional parameter `useVertexAlpha` is to be set to `false` (default `true`) when you don't need alpha blending (faster)
+ * * The optional parameter `material` is the material to use to draw the lines if provided. If not, a default material will be created
+ * * When updating an instance, remember that only point positions can change, not the number of points
+ * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+ * @see https://doc.babylonjs.com/how_to/parametric_shapes#lines
+ * @param name defines the name of the new line system
+ * @param options defines the options used to create the line system
+ * @param scene defines the hosting scene
+ * @returns a new line mesh
+ */
+function CreateLines(name, options, scene) {
+    if (scene === void 0) { scene = null; }
+    var colors = (options.colors) ? [options.colors] : null;
+    var lines = CreateLineSystem(name, { lines: [options.points], updatable: options.updatable, instance: options.instance, colors: colors, useVertexAlpha: options.useVertexAlpha, material: options.material }, scene);
+    return lines;
+}
+/**
+ * Creates a dashed line mesh
+ * * A dashed line mesh is considered as a parametric shape since it has no predefined original shape. Its shape is determined by the passed array of points as an input parameter
+ * * Like every other parametric shape, it is dynamically updatable by passing an existing instance of LineMesh to this static function
+ * * The parameter `points` is an array successive Vector3
+ * * The parameter `dashNb` is the intended total number of dashes (positive integer, default 200)
+ * * The parameter `dashSize` is the size of the dashes relatively the dash number (positive float, default 3)
+ * * The parameter `gapSize` is the size of the gap between two successive dashes relatively the dash number (positive float, default 1)
+ * * The optional parameter `instance` is an instance of an existing LineMesh object to be updated with the passed `points` parameter : https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#lines-and-dashedlines
+ * * The optional parameter `useVertexAlpha` is to be set to `false` (default `true`) when you don't need the alpha blending (faster)
+ * * The optional parameter `material` is the material to use to draw the lines if provided. If not, a default material will be created
+ * * When updating an instance, remember that only point positions can change, not the number of points
+ * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+ * @param name defines the name of the mesh
+ * @param options defines the options used to create the mesh
+ * @param scene defines the hosting scene
+ * @returns the dashed line mesh
+ * @see https://doc.babylonjs.com/how_to/parametric_shapes#dashed-lines
+ */
+function CreateDashedLines(name, options, scene) {
+    if (scene === void 0) { scene = null; }
+    var points = options.points;
+    var instance = options.instance;
+    var gapSize = options.gapSize || 1;
+    var dashSize = options.dashSize || 3;
+    if (instance) { //  dashed lines update
+        var positionFunction = function (positions) {
+            var curvect = Vector3.Zero();
+            var nbSeg = positions.length / 6;
+            var lg = 0;
+            var nb = 0;
+            var shft = 0;
+            var dashshft = 0;
+            var curshft = 0;
+            var p = 0;
+            var i = 0;
+            var j = 0;
+            for (i = 0; i < points.length - 1; i++) {
+                points[i + 1].subtractToRef(points[i], curvect);
+                lg += curvect.length();
+            }
+            shft = lg / nbSeg;
+            var dashSize = instance._creationDataStorage.dashSize;
+            var gapSize = instance._creationDataStorage.gapSize;
+            dashshft = dashSize * shft / (dashSize + gapSize);
+            for (i = 0; i < points.length - 1; i++) {
+                points[i + 1].subtractToRef(points[i], curvect);
+                nb = Math.floor(curvect.length() / shft);
+                curvect.normalize();
+                j = 0;
+                while (j < nb && p < positions.length) {
+                    curshft = shft * j;
+                    positions[p] = points[i].x + curshft * curvect.x;
+                    positions[p + 1] = points[i].y + curshft * curvect.y;
+                    positions[p + 2] = points[i].z + curshft * curvect.z;
+                    positions[p + 3] = points[i].x + (curshft + dashshft) * curvect.x;
+                    positions[p + 4] = points[i].y + (curshft + dashshft) * curvect.y;
+                    positions[p + 5] = points[i].z + (curshft + dashshft) * curvect.z;
+                    p += 6;
+                    j++;
+                }
+            }
+            while (p < positions.length) {
+                positions[p] = points[i].x;
+                positions[p + 1] = points[i].y;
+                positions[p + 2] = points[i].z;
+                p += 3;
+            }
+        };
+        instance.updateMeshPositions(positionFunction, false);
+        return instance;
+    }
+    // dashed lines creation
+    var dashedLines = new LinesMesh(name, scene, null, undefined, undefined, undefined, options.useVertexAlpha, options.material);
+    var vertexData = CreateDashedLinesVertexData(options);
+    vertexData.applyToMesh(dashedLines, options.updatable);
+    dashedLines._creationDataStorage = new _CreationDataStorage();
+    dashedLines._creationDataStorage.dashSize = dashSize;
+    dashedLines._creationDataStorage.gapSize = gapSize;
+    return dashedLines;
+}
+VertexData.CreateLineSystem = CreateLineSystemVertexData;
+VertexData.CreateDashedLines = CreateDashedLinesVertexData;
 Mesh.CreateLines = function (name, points, scene, updatable, instance) {
     if (scene === void 0) { scene = null; }
     if (updatable === void 0) { updatable = false; }
@@ -71772,7 +72458,7 @@ Mesh.CreateLines = function (name, points, scene, updatable, instance) {
         updatable: updatable,
         instance: instance
     };
-    return LinesBuilder.CreateLines(name, options, scene);
+    return CreateLines(name, options, scene);
 };
 Mesh.CreateDashedLines = function (name, points, dashSize, gapSize, dashNb, scene, updatable, instance) {
     if (scene === void 0) { scene = null; }
@@ -71784,181 +72470,99 @@ Mesh.CreateDashedLines = function (name, points, dashSize, gapSize, dashNb, scen
         updatable: updatable,
         instance: instance
     };
-    return LinesBuilder.CreateDashedLines(name, options, scene);
+    return CreateDashedLines(name, options, scene);
 };
+
 /**
- * Class containing static functions to help procedurally build meshes
+ * Creates the VertexData for a Plane
+ * @param options an object used to set the following optional parameters for the plane, required but can be empty
+     * * size sets the width and height of the plane to the value of size, optional default 1
+     * * width sets the width (x direction) of the plane, overwrites the width set by size, optional, default size
+     * * height sets the height (y direction) of the plane, overwrites the height set by size, optional, default size
+     * * sideOrientation optional and takes the values : Mesh.FRONTSIDE (default), Mesh.BACKSIDE or Mesh.DOUBLESIDE
+     * * frontUvs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the front side, optional, default vector4 (0, 0, 1, 1)
+     * * backUVs only usable when you create a double-sided mesh, used to choose what parts of the texture image to crop and apply on the back side, optional, default vector4 (0, 0, 1, 1)
+ * @returns the VertexData of the box
  */
-var LinesBuilder = /** @class */ (function () {
-    function LinesBuilder() {
+function CreatePlaneVertexData(options) {
+    var indices = [];
+    var positions = [];
+    var normals = [];
+    var uvs = [];
+    var width = options.width || options.size || 1;
+    var height = options.height || options.size || 1;
+    var sideOrientation = (options.sideOrientation === 0) ? 0 : options.sideOrientation || VertexData.DEFAULTSIDE;
+    // Vertices
+    var halfWidth = width / 2.0;
+    var halfHeight = height / 2.0;
+    positions.push(-halfWidth, -halfHeight, 0);
+    normals.push(0, 0, -1.0);
+    uvs.push(0.0, 0.0);
+    positions.push(halfWidth, -halfHeight, 0);
+    normals.push(0, 0, -1.0);
+    uvs.push(1.0, 0.0);
+    positions.push(halfWidth, halfHeight, 0);
+    normals.push(0, 0, -1.0);
+    uvs.push(1.0, 1.0);
+    positions.push(-halfWidth, halfHeight, 0);
+    normals.push(0, 0, -1.0);
+    uvs.push(0.0, 1.0);
+    // Indices
+    indices.push(0);
+    indices.push(1);
+    indices.push(2);
+    indices.push(0);
+    indices.push(2);
+    indices.push(3);
+    // Sides
+    VertexData._ComputeSides(sideOrientation, positions, indices, normals, uvs, options.frontUVs, options.backUVs);
+    // Result
+    var vertexData = new VertexData();
+    vertexData.indices = indices;
+    vertexData.positions = positions;
+    vertexData.normals = normals;
+    vertexData.uvs = uvs;
+    return vertexData;
+}
+/**
+ * Creates a plane mesh
+ * * The parameter `size` sets the size (float) of both sides of the plane at once (default 1)
+ * * You can set some different plane dimensions by using the parameters `width` and `height` (both by default have the same value of `size`)
+ * * The parameter `sourcePlane` is a Plane instance. It builds a mesh plane from a Math plane
+ * * You can also set the mesh side orientation with the values : BABYLON.Mesh.FRONTSIDE (default), BABYLON.Mesh.BACKSIDE or BABYLON.Mesh.DOUBLESIDE
+ * * If you create a double-sided mesh, you can choose what parts of the texture image to crop and stick respectively on the front and the back sides with the parameters `frontUVs` and `backUVs` (Vector4). Detail here : https://doc.babylonjs.com/babylon101/discover_basic_elements#side-orientation
+ * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
+ * @param name defines the name of the mesh
+ * @param options defines the options used to create the mesh
+ * @param scene defines the hosting scene
+ * @returns the plane mesh
+ * @see https://doc.babylonjs.com/how_to/set_shapes#plane
+ */
+function CreatePlane(name, options, scene) {
+    if (options === void 0) { options = {}; }
+    if (scene === void 0) { scene = null; }
+    var plane = new Mesh(name, scene);
+    options.sideOrientation = Mesh._GetDefaultSideOrientation(options.sideOrientation);
+    plane._originalBuilderSideOrientation = options.sideOrientation;
+    var vertexData = CreatePlaneVertexData(options);
+    vertexData.applyToMesh(plane, options.updatable);
+    if (options.sourcePlane) {
+        plane.translate(options.sourcePlane.normal, -options.sourcePlane.d);
+        plane.setDirection(options.sourcePlane.normal.scale(-1));
     }
-    /**
-     * Creates a line system mesh. A line system is a pool of many lines gathered in a single mesh
-     * * A line system mesh is considered as a parametric shape since it has no predefined original shape. Its shape is determined by the passed array of lines as an input parameter
-     * * Like every other parametric shape, it is dynamically updatable by passing an existing instance of LineSystem to this static function
-     * * The parameter `lines` is an array of lines, each line being an array of successive Vector3
-     * * The optional parameter `instance` is an instance of an existing LineSystem object to be updated with the passed `lines` parameter
-     * * The optional parameter `colors` is an array of line colors, each line colors being an array of successive Color4, one per line point
-     * * The optional parameter `useVertexAlpha` is to be set to `false` (default `true`) when you don't need the alpha blending (faster)
-     * * The optional parameter `material` is the material to use to draw the lines if provided. If not, a default material will be created
-     * * Updating a simple Line mesh, you just need to update every line in the `lines` array : https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#lines-and-dashedlines
-     * * When updating an instance, remember that only line point positions can change, not the number of points, neither the number of lines
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#line-system
-     * @param name defines the name of the new line system
-     * @param options defines the options used to create the line system
-     * @param scene defines the hosting scene
-     * @returns a new line system mesh
-     */
-    LinesBuilder.CreateLineSystem = function (name, options, scene) {
-        var instance = options.instance;
-        var lines = options.lines;
-        var colors = options.colors;
-        if (instance) { // lines update
-            var positions = instance.getVerticesData(VertexBuffer.PositionKind);
-            var vertexColor;
-            var lineColors;
-            if (colors) {
-                vertexColor = instance.getVerticesData(VertexBuffer.ColorKind);
-            }
-            var i = 0;
-            var c = 0;
-            for (var l = 0; l < lines.length; l++) {
-                var points = lines[l];
-                for (var p = 0; p < points.length; p++) {
-                    positions[i] = points[p].x;
-                    positions[i + 1] = points[p].y;
-                    positions[i + 2] = points[p].z;
-                    if (colors && vertexColor) {
-                        lineColors = colors[l];
-                        vertexColor[c] = lineColors[p].r;
-                        vertexColor[c + 1] = lineColors[p].g;
-                        vertexColor[c + 2] = lineColors[p].b;
-                        vertexColor[c + 3] = lineColors[p].a;
-                        c += 4;
-                    }
-                    i += 3;
-                }
-            }
-            instance.updateVerticesData(VertexBuffer.PositionKind, positions, false, false);
-            if (colors && vertexColor) {
-                instance.updateVerticesData(VertexBuffer.ColorKind, vertexColor, false, false);
-            }
-            return instance;
-        }
-        // line system creation
-        var useVertexColor = (colors) ? true : false;
-        var lineSystem = new LinesMesh(name, scene, null, undefined, undefined, useVertexColor, options.useVertexAlpha, options.material);
-        var vertexData = VertexData.CreateLineSystem(options);
-        vertexData.applyToMesh(lineSystem, options.updatable);
-        return lineSystem;
+    return plane;
+}
+VertexData.CreatePlane = CreatePlaneVertexData;
+Mesh.CreatePlane = function (name, size, scene, updatable, sideOrientation) {
+    var options = {
+        size: size,
+        width: size,
+        height: size,
+        sideOrientation: sideOrientation,
+        updatable: updatable
     };
-    /**
-     * Creates a line mesh
-     * A line mesh is considered as a parametric shape since it has no predefined original shape. Its shape is determined by the passed array of points as an input parameter
-     * * Like every other parametric shape, it is dynamically updatable by passing an existing instance of LineMesh to this static function
-     * * The parameter `points` is an array successive Vector3
-     * * The optional parameter `instance` is an instance of an existing LineMesh object to be updated with the passed `points` parameter : https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#lines-and-dashedlines
-     * * The optional parameter `colors` is an array of successive Color4, one per line point
-     * * The optional parameter `useVertexAlpha` is to be set to `false` (default `true`) when you don't need alpha blending (faster)
-     * * The optional parameter `material` is the material to use to draw the lines if provided. If not, a default material will be created
-     * * When updating an instance, remember that only point positions can change, not the number of points
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#lines
-     * @param name defines the name of the new line system
-     * @param options defines the options used to create the line system
-     * @param scene defines the hosting scene
-     * @returns a new line mesh
-     */
-    LinesBuilder.CreateLines = function (name, options, scene) {
-        if (scene === void 0) { scene = null; }
-        var colors = (options.colors) ? [options.colors] : null;
-        var lines = LinesBuilder.CreateLineSystem(name, { lines: [options.points], updatable: options.updatable, instance: options.instance, colors: colors, useVertexAlpha: options.useVertexAlpha, material: options.material }, scene);
-        return lines;
-    };
-    /**
-     * Creates a dashed line mesh
-     * * A dashed line mesh is considered as a parametric shape since it has no predefined original shape. Its shape is determined by the passed array of points as an input parameter
-     * * Like every other parametric shape, it is dynamically updatable by passing an existing instance of LineMesh to this static function
-     * * The parameter `points` is an array successive Vector3
-     * * The parameter `dashNb` is the intended total number of dashes (positive integer, default 200)
-     * * The parameter `dashSize` is the size of the dashes relatively the dash number (positive float, default 3)
-     * * The parameter `gapSize` is the size of the gap between two successive dashes relatively the dash number (positive float, default 1)
-     * * The optional parameter `instance` is an instance of an existing LineMesh object to be updated with the passed `points` parameter : https://doc.babylonjs.com/how_to/how_to_dynamically_morph_a_mesh#lines-and-dashedlines
-     * * The optional parameter `useVertexAlpha` is to be set to `false` (default `true`) when you don't need the alpha blending (faster)
-     * * The optional parameter `material` is the material to use to draw the lines if provided. If not, a default material will be created
-     * * When updating an instance, remember that only point positions can change, not the number of points
-     * * The mesh can be set to updatable with the boolean parameter `updatable` (default false) if its internal geometry is supposed to change once created
-     * @param name defines the name of the mesh
-     * @param options defines the options used to create the mesh
-     * @param scene defines the hosting scene
-     * @returns the dashed line mesh
-     * @see https://doc.babylonjs.com/how_to/parametric_shapes#dashed-lines
-     */
-    LinesBuilder.CreateDashedLines = function (name, options, scene) {
-        if (scene === void 0) { scene = null; }
-        var points = options.points;
-        var instance = options.instance;
-        var gapSize = options.gapSize || 1;
-        var dashSize = options.dashSize || 3;
-        if (instance) { //  dashed lines update
-            var positionFunction = function (positions) {
-                var curvect = Vector3.Zero();
-                var nbSeg = positions.length / 6;
-                var lg = 0;
-                var nb = 0;
-                var shft = 0;
-                var dashshft = 0;
-                var curshft = 0;
-                var p = 0;
-                var i = 0;
-                var j = 0;
-                for (i = 0; i < points.length - 1; i++) {
-                    points[i + 1].subtractToRef(points[i], curvect);
-                    lg += curvect.length();
-                }
-                shft = lg / nbSeg;
-                var dashSize = instance._creationDataStorage.dashSize;
-                var gapSize = instance._creationDataStorage.gapSize;
-                dashshft = dashSize * shft / (dashSize + gapSize);
-                for (i = 0; i < points.length - 1; i++) {
-                    points[i + 1].subtractToRef(points[i], curvect);
-                    nb = Math.floor(curvect.length() / shft);
-                    curvect.normalize();
-                    j = 0;
-                    while (j < nb && p < positions.length) {
-                        curshft = shft * j;
-                        positions[p] = points[i].x + curshft * curvect.x;
-                        positions[p + 1] = points[i].y + curshft * curvect.y;
-                        positions[p + 2] = points[i].z + curshft * curvect.z;
-                        positions[p + 3] = points[i].x + (curshft + dashshft) * curvect.x;
-                        positions[p + 4] = points[i].y + (curshft + dashshft) * curvect.y;
-                        positions[p + 5] = points[i].z + (curshft + dashshft) * curvect.z;
-                        p += 6;
-                        j++;
-                    }
-                }
-                while (p < positions.length) {
-                    positions[p] = points[i].x;
-                    positions[p + 1] = points[i].y;
-                    positions[p + 2] = points[i].z;
-                    p += 3;
-                }
-            };
-            instance.updateMeshPositions(positionFunction, false);
-            return instance;
-        }
-        // dashed lines creation
-        var dashedLines = new LinesMesh(name, scene, null, undefined, undefined, undefined, options.useVertexAlpha, options.material);
-        var vertexData = VertexData.CreateDashedLines(options);
-        vertexData.applyToMesh(dashedLines, options.updatable);
-        dashedLines._creationDataStorage = new _CreationDataStorage();
-        dashedLines._creationDataStorage.dashSize = dashSize;
-        dashedLines._creationDataStorage.gapSize = gapSize;
-        return dashedLines;
-    };
-    return LinesBuilder;
-}());
+    return CreatePlane(name, options, scene);
+};
 
 /** 
  * The Rendering class is found at [[Rendering | `noa.rendering`]].
@@ -72071,7 +72675,7 @@ function initScene(self, canvas, opts) {
     self._cameraHolder.visibility = false;
 
     // plane obscuring the camera - for overlaying an effect on the whole view
-    self._camScreen = Mesh.CreatePlane('camScreen', 10, scene);
+    self._camScreen = CreatePlane('camScreen', { size: 10 }, scene);
     self.addMeshToScene(self._camScreen);
     self._camScreen.position.z = .1;
     self._camScreen.parent = self._camera;
@@ -72345,7 +72949,7 @@ function checkCameraEffect(self, id) {
 function getHighlightMesh(rendering) {
     var mesh = rendering._highlightMesh;
     if (!mesh) {
-        mesh = Mesh.CreatePlane("highlight", 1.0, rendering._scene);
+        mesh = CreatePlane("highlight", { size: 1.0 }, rendering._scene);
         var hlm = rendering.makeStandardMaterial('highlightMat');
         hlm.backFaceCulling = false;
         hlm.emissiveColor = new Color3(1, 1, 1);
@@ -72354,13 +72958,15 @@ function getHighlightMesh(rendering) {
 
         // outline
         var s = 0.5;
-        var lines = Mesh.CreateLines("hightlightLines", [
-            new Vector3(s, s, 0),
-            new Vector3(s, -s, 0),
-            new Vector3(-s, -s, 0),
-            new Vector3(-s, s, 0),
-            new Vector3(s, s, 0)
-        ], rendering._scene);
+        var lines = CreateLines("hightlightLines", {
+            points: [
+                new Vector3(s, s, 0),
+                new Vector3(s, -s, 0),
+                new Vector3(-s, -s, 0),
+                new Vector3(-s, s, 0),
+                new Vector3(s, s, 0)
+            ]
+        }, rendering._scene);
         lines.color = new Color3(1, 1, 1);
         lines.parent = mesh;
 
