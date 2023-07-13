@@ -1,6 +1,11 @@
 
+<<<<<<< HEAD
 import glvec3 from 'gl-vec3'
 import { makeProfileHook } from './util'
+=======
+
+import glvec3 from 'gl-vec3'
+>>>>>>> 7b18c4b (make build work)
 
 import { SceneOctreeManager } from './sceneOctreeManager'
 
@@ -119,6 +124,7 @@ export class Rendering {
         // init internal properties
         this.engine = new Engine(canvas, opts.antiAlias, {
             preserveDrawingBuffer: opts.preserveDrawingBuffer,
+            disableWebGL2Support: true
         })
         var scene = new Scene(this.engine)
         this.scene = scene

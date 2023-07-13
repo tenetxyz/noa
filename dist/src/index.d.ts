@@ -53,8 +53,6 @@ export class Engine extends EventEmitter {
      *    Alerts client before a terrain mesh is removed.
     */
     constructor(opts?: {});
-    /** Version string, e.g. `"0.25.4"` */
-    version: string;
     /** @internal */
     _paused: boolean;
     /** @internal */
