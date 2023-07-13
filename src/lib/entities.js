@@ -11,6 +11,7 @@ import vec3 from 'gl-vec3'
 import { updatePositionExtents } from '../components/position'
 import { setPhysicsFromPosition } from '../components/physics'
 
+import * as components from "../components"
 
 
 var defaultOptions = {
@@ -426,14 +427,9 @@ function extentsOverlap(extA, extB) {
 // Bundler magic to import everything in the ../components directory
 // each component module exports a default function: (noa) => compDefinition
 function importLocalComponents(ents, args, createCompFn) {
-    //@ts-expect-error
-    var reqContext = require.context('../components/', false, /\.js$/)
-    for (var name of reqContext.keys()) {
-        // convert name ('./foo.js') to bare name ('foo')
-        var bareName = /\.\/(.*)\.js/.exec(name)[1]
-        var arg = args[bareName] || undefined
-        var compFn = reqContext(name)
-        if (compFn.default) compFn = compFn.default
+    for (var name of Object.keys(components)) {
+        var arg = args[name] || undefined
+        var compFn = components[name]
         var compDef = compFn(ents.noa, arg)
         var comp = createCompFn(compDef)
         ents.names[compDef.name] = comp

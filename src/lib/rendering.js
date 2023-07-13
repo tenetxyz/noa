@@ -4,7 +4,7 @@
  */
 
 
-var glvec3 = require('gl-vec3')
+import glvec3 from 'gl-vec3'
 
 import { SceneOctreeManager } from './sceneOctreeManager'
 
@@ -112,6 +112,7 @@ function initScene(self, canvas, opts) {
     // init internal properties
     self._engine = new Engine(canvas, opts.antiAlias, {
         preserveDrawingBuffer: opts.preserveDrawingBuffer,
+        disableWebGL2Support: true
     })
     self._scene = new Scene(self._engine)
     var scene = self._scene
