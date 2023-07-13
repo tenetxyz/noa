@@ -119,6 +119,7 @@ export class Rendering {
         // init internal properties
         this.engine = new Engine(canvas, opts.antiAlias, {
             preserveDrawingBuffer: opts.preserveDrawingBuffer,
+            disableWebGL2Support: true
         })
         var scene = new Scene(this.engine)
         this.scene = scene

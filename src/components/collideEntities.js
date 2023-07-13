@@ -1,4 +1,3 @@
-
 import boxIntersect from 'box-intersect'
 
 

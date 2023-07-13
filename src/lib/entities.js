@@ -4,7 +4,6 @@ import vec3 from 'gl-vec3'
 import { updatePositionExtents } from '../components/position'
 import { setPhysicsFromPosition } from '../components/physics'
 
-
 // Component definitions
 import collideEntitiesComp from "../components/collideEntities.js"
 import collideTerrainComp from "../components/collideTerrain.js"

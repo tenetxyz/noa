@@ -53,8 +53,6 @@ export class Engine extends EventEmitter {
      *    Alerts client before a terrain mesh is removed.
     */
     constructor(opts?: {});
-    /** Version string, e.g. `"0.25.4"` */
-    version: string;
     /** @internal */
     _paused: boolean;
     /** @internal */
@@ -122,7 +120,7 @@ export class Engine extends EventEmitter {
      *      adjacent: number[],
      * }}
     */
-    targetedBlock: {
+    targetedBlock: null | {
         blockID: number;
         position: number[];
         normal: number[];
