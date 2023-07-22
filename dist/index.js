@@ -3462,8 +3462,7 @@ class $11e41780fd8a0927$export$ab9c2d573a6e2267 {
      */ _initScene(canvas, opts) {
         // init internal properties
         this.engine = new (0, $5OpyM$Engine)(canvas, opts.antiAlias, {
-            preserveDrawingBuffer: opts.preserveDrawingBuffer,
-            disableWebGL2Support: true
+            preserveDrawingBuffer: opts.preserveDrawingBuffer
         });
         var scene = new (0, $5OpyM$Scene)(this.engine);
         this.scene = scene;
