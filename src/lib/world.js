@@ -649,7 +649,7 @@ function invalidateChunksInBox(world, box) {
  * when current world changes - empty work queues and mark all for removal
  * @param {World} world 
 */
-function markAllChunksInvalid(world) {
+export function markAllChunksInvalid(world) {
     world._chunksInvalidated.copyFrom(world._chunksKnown)
     world._chunksToRemove.empty()
     world._chunksToRequest.empty()

@@ -4374,7 +4374,7 @@ var $90379f8792b605b2$var$manualErr = "Set `noa.world.manuallyControlChunkLoadin
     // removals queue so that player's chunk gets loaded back quickly
     if (this._prevWorldName !== this.noa.worldName) {
         if (!this.manuallyControlChunkLoading) {
-            $90379f8792b605b2$var$markAllChunksInvalid(this);
+            $90379f8792b605b2$export$8c685c1b0e94a280(this);
             this._chunkAddSearchFrom = 0;
             $90379f8792b605b2$var$processRemoveQueue(this);
         }
@@ -4573,10 +4573,7 @@ var $90379f8792b605b2$var$meshCheckIndex = 0;
         world._chunksToMeshFirst.remove(i, j, k);
     });
 }
-/** 
- * when current world changes - empty work queues and mark all for removal
- * @param {World} world 
-*/ function $90379f8792b605b2$var$markAllChunksInvalid(world) {
+function $90379f8792b605b2$export$8c685c1b0e94a280(world) {
     world._chunksInvalidated.copyFrom(world._chunksKnown);
     world._chunksToRemove.empty();
     world._chunksToRequest.empty();
