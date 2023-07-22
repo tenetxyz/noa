@@ -24,13 +24,13 @@ export class Container extends EventEmitter {
     /** The `canvas` element that the game will draw into */
     canvas: any;
     /** Whether the browser supports pointerLock. @readonly */
-    supportsPointerLock: boolean;
+    readonly supportsPointerLock: boolean;
     /** Whether the user's pointer is within the game area. @readonly */
-    pointerInGame: boolean;
+    readonly pointerInGame: boolean;
     /** Whether the game is focused. @readonly */
-    isFocused: boolean;
+    readonly isFocused: boolean;
     /** Gets the current state of pointerLock. @readonly */
-    hasPointerLock: boolean;
+    readonly hasPointerLock: boolean;
     /** @internal */
     _shell: MicroGameShell;
     /** @internal */

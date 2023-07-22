@@ -120,7 +120,7 @@ export class Engine extends EventEmitter {
      *      adjacent: number[],
      * }}
     */
-    targetedBlock: {
+    targetedBlock: null | {
         blockID: number;
         position: number[];
         normal: number[];
