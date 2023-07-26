@@ -107,6 +107,8 @@ export class Engine extends EventEmitter {
      *    Alerts client about a terrain mesh being added to the scene
      *  + `removingTerrainMesh => (mesh)`  
      *    Alerts client before a terrain mesh is removed.
+     *  + `newWorldName => (string)`  
+     *    Alerts client when a new world is loaded by telling it the new world name
     */
     constructor(opts = {}) {
         super()

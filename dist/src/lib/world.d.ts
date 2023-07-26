@@ -1,9 +1,4 @@
 /**
- * when current world changes - empty work queues and mark all for removal
- * @param {World} world
-*/
-export function markAllChunksInvalid(world: World): void;
-/**
  * `noa.world` - manages world data, chunks, voxels.
  *
  * This module uses the following default options (from the options

@@ -384,6 +384,7 @@ World.prototype.tick = function () {
     // if world has changed, invalidate everything and ping
     // removals queue so that player's chunk gets loaded back quickly
     if (this._prevWorldName !== this.noa.worldName) {
+        this.noa.emit('newWorldName', this.noa.worldName);
         if (!this.manuallyControlChunkLoading) {
             markAllChunksInvalid(this)
             this._chunkAddSearchFrom = 0
@@ -649,7 +650,7 @@ function invalidateChunksInBox(world, box) {
  * when current world changes - empty work queues and mark all for removal
  * @param {World} world 
 */
-export function markAllChunksInvalid(world) {
+function markAllChunksInvalid(world) {
     world._chunksInvalidated.copyFrom(world._chunksKnown)
     world._chunksToRemove.empty()
     world._chunksToRequest.empty()
